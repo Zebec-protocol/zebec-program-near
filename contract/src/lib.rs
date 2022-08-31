@@ -1,5 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
+use near_sdk::json_types::U128;
 use near_sdk::serde::Serialize;
 use near_sdk::{env, log, near_bindgen, AccountId, Balance, Promise, Timestamp};
 
@@ -166,4 +167,14 @@ mod tests {
 
         testing_env!(builder.build());
     }
+
+    // Auxiliar fn: create a mock context
+    fn set_context(predecessor: &str, amount: Balance) {
+        let mut builder = VMContextBuilder::new();
+        builder.predecessor_account_id(predecessor.parse().unwrap());
+        builder.attached_deposit(amount);
+
+        testing_env!(builder.build());
+    }
+
 }

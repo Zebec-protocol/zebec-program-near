@@ -40,7 +40,11 @@ pub struct Stream {
 
 - `create_stream()`
 - `withdraw()`
+<<<<<<< HEAD
 - `pause()`
+=======
+- `pause()
+>>>>>>> 5767303 (add basic feature and update readme)
 - `resume()`
 
 ### Views
@@ -50,8 +54,16 @@ pub struct Stream {
 ### Todos
 
 - [x] data-structures and main functions (with input guards for input sanity)
+<<<<<<< HEAD
 - [x] view functions & events, uint tests
 - [ ] finalize native token integration and handle gas (gas fee, Near deposits, refunds, storage staking)
 - [ ] testnet deployment
 - [ ] cross-contract calls and stablecoin integration
 - [ ] finalize unit tests and integration
+=======
+- [x] view functions & events
+- [ ] finalize native token integration and handle gas (gas fee, Near deposits, refunds, storage staking)
+- [ ] testnet deployment
+- [ ] cross-contract calls and Stablecoin integration
+- [ ] unit tests and integration
+>>>>>>> 5767303 (add basic feature and update readme)
