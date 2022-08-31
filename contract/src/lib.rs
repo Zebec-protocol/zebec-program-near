@@ -14,7 +14,7 @@ pub struct Contract {
 }
 // Define the stream structure
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize, Clone)]
 pub struct Stream {
     id: String,
     sender: AccountId,
@@ -26,7 +26,7 @@ pub struct Stream {
 }
 
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, PartialEq)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, PartialEq, Clone, Copy)]
 #[serde(crate = "near_sdk::serde")]
 pub enum StreamStatus {
     Initialized,
@@ -85,32 +85,38 @@ impl Contract {
         //  status : active
         // amount > withdrawal balance
         // @todo settle this reference
-        let temp_params = self.streams.get(stream_id).unwrap(); // panic on error
+        let mut temp_stream = self.streams.get(stream_id).unwrap(); // panic on error
 
         // assert that the caller has enough balance to withdraw
-        let temp_amount = temp_params.balance;
+        let temp_amount = temp_stream.balance;
         // calculate the withdrawable amount
         //    let time_elapsed = (temp_params.created - env::block_timestamp()).into(U128);
-        let time_elapsed = temp_params.created - env::block_timestamp();
+        let time_elapsed = temp_stream.created - env::block_timestamp();
 
         // U128::from(from_index.unwrap_or(U128(0)));
 
-        let withdrawal_amount = temp_params.rate * u128::from(time_elapsed);
+        let withdrawal_amount = temp_stream.rate * u128::from(time_elapsed);
 
         assert!(u128::from(withdrawal_amount) == amount, "amount mismatch! ");
-        Promise::new(temp_params.receiver).transfer(withdrawal_amount);
-        // self.streams.insert(stream_id, temp_amount - withdrawal_amount);
-        // update the state
+        let receiver = temp_stream.receiver.clone();
+        Promise::new(receiver).transfer(withdrawal_amount);
+        temp_stream.balance -= withdrawal_amount;
+        self.streams.insert(stream_id, &temp_stream);
     }
     pub fn pause(&mut self, stream_id: &U128) {
         assert!(env::predecessor_account_id() == self.streams.get(stream_id).unwrap().sender);
         // update the status to paused
+        let mut temp_stream = self.streams.get(stream_id).unwrap();
+        temp_stream.status = StreamStatus::Paused;
+        self.streams.insert(stream_id, &temp_stream);
     }
 
     pub fn resume(&mut self, stream_id: &U128) {
         let currnet_status = self.streams.get(stream_id).unwrap().status;
         assert!(currnet_status == StreamStatus::Paused);
-        // update status
+        let mut temp_stream = self.streams.get(stream_id).unwrap();
+        temp_stream.status = StreamStatus::Active;
+        self.streams.insert(stream_id, &temp_stream);
     }
 }
 
