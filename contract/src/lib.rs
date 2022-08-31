@@ -48,6 +48,16 @@ impl Default for Contract {
 
 #[near_bindgen]
 impl Contract {
+    #[init]
+    #[private] // Public - but only callable by env::current_account_id()
+    pub fn new() -> Self {
+        assert!(!env::state_exists(), "Already initialized");
+        Self {
+            current_id: U128(1),
+            streams: UnorderedMap::new(b"p"),
+        }
+    }
+
     #[payable]
     pub fn create_stream(&mut self, receiver: AccountId, rate: u128, status: StreamStatus) {
         // input validation
@@ -100,11 +110,9 @@ impl Contract {
     pub fn resume(&mut self, stream_id: &U128) {
         let currnet_status = self.streams.get(stream_id).unwrap().status;
         assert!(currnet_status == StreamStatus::Paused);
-        // update status 
+        // update status
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -119,7 +127,8 @@ mod tests {
     #[test]
     fn initializes() {
         let contract = Contract::new();
-        assert_eq!(contract.total_amount, 0)
+        // current_id: U128(1),
+        assert_eq!(contract.current_id, U128(1))
     }
 
     #[test]
@@ -127,22 +136,21 @@ mod tests {
         let mut contract = Contract::new();
 
         // Make a payment
-        set_context("caller_a", 1 * NEAR);
-        contract.send_payment(BENEFICIARY.parse().unwrap());
+        // set_context("caller_a", 1 * NEAR);
+        // contract.send_payment(BENEFICIARY.parse().unwrap());
 
-        let sent_amount = contract.get_balanceof(BENEFICIARY.parse().unwrap());
+        // let sent_amount = contract.get_balanceof(BENEFICIARY.parse().unwrap());
 
+        // // Check the donation was recorded correctly
+        // assert_eq!(sent_amount.amount.0, 1 * NEAR);
 
-        // Check the donation was recorded correctly
-        assert_eq!(sent_amount.amount.0, 1 * NEAR);
+        // // Make another donation
+        // set_context("caller2", 2 * NEAR);
+        // contract.send_payment(BENEFICIARY2.parse().unwrap());
+        // let sent_amount2 = contract.get_balanceof(BENEFICIARY2.parse().unwrap());
 
-        // Make another donation
-        set_context("caller2", 2 * NEAR);
-        contract.send_payment(BENEFICIARY2.parse().unwrap());
-        let sent_amount2 = contract.get_balanceof(BENEFICIARY2.parse().unwrap());
-
-        // Check the donation was recorded correctly
-        assert_eq!(sent_amount2.amount.0, 2 * NEAR);
+        // // Check the donation was recorded correctly
+        // assert_eq!(sent_amount2.amount.0, 2 * NEAR);
     }
 
     // Auxiliar fn: create a mock context
@@ -153,5 +161,4 @@ mod tests {
 
         testing_env!(builder.build());
     }
-
 }
