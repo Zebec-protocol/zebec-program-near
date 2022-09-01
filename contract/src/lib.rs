@@ -1,7 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::json_types::U128;
-use near_sdk::serde::Serialize;
 use near_sdk::{env, log, near_bindgen, AccountId, Balance, Promise, Timestamp};
 
 // Define the default message
@@ -16,23 +14,16 @@ pub struct Contract {
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, Clone)]
 pub struct Stream {
-    id: String,
+    id: u64,
     sender: AccountId,
     receiver: AccountId,
-    balance: Balance, // 10^-24 yocto
+    balance: Balance,
     rate: Balance,
     created: Timestamp,
-    status: StreamStatus,
-}
-
-#[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, PartialEq, Clone, Copy)]
-#[serde(crate = "near_sdk::serde")]
-pub enum StreamStatus {
-    Initialized,
-    Active,
-    Paused,
-    Finished,
+    startTime: Timestamp,
+    endTime: Timestamp,
+    withdrawTime: Timestamp,
+    isPaused: bool,
 }
 
 // new @todo
@@ -59,64 +50,109 @@ impl Contract {
     }
 
     #[payable]
-    pub fn create_stream(&mut self, receiver: AccountId, rate: u128, status: StreamStatus) {
+    pub fn create_stream(&mut self, receiver: AccountId, rate: u128, startTime:Timestamp, endTime: Timestamp) {
         // input validation
-        let params_key = self.current_id; // @todo self.current_id ++;
+        let params_key = self.current_id;
+        self.current_id += 1;
 
         let stream_params = Stream {
-            id: String::from("1"),
+            id: params_key,
             sender: env::predecessor_account_id(),
             receiver,
             rate,
-            status: StreamStatus::Initialized, //staus to initialzed
+            isPaused: false,
             balance: env::attached_deposit(),
             created: env::block_timestamp(),
+            startTime,
+            endTime,
+            withdrawTime: startTime,
         };
-        // save the sent native balance to this contract
+
+        // calculate the balance is enough
+        let stream_duration = endTime - startTime;
+        let stream_amount = u128::from(stream_duration) * rate;
+
+        // check the amount send to the stream
+        assert!(near_sdk::env::attached_deposit() >= stream_amount, "Not enough amount to fund the stream");
 
         self.streams.insert(&params_key, &stream_params);
+
         // Use env::log to record logs permanently to the blockchain!
         log!("Saving streams {}", stream_params.id);
     }
 
-    pub fn withdraw(&mut self, stream_id: &u64, amount: Balance) {
-        // add input guards/ data sanity
-        // guards
-        //  status : active
-        // amount > withdrawal balance
-        // @todo settle this reference
+    pub fn withdraw(&mut self, stream_id: &u64) {
+        // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(stream_id).unwrap(); // panic on error
 
-        // assert that the caller has enough balance to withdraw
-        let temp_amount = temp_stream.balance;
-        // calculate the withdrawable amount
-        //    let time_elapsed = (temp_params.created - env::block_timestamp()).into(U128);
-        let time_elapsed = temp_stream.created - env::block_timestamp();
+        // assert the stream has started
+        assert!(env::block_timestamp() > temp_stream.startTime, "The stream has not started yet");
 
-        // U128::from(from_index.unwrap_or(U128(0)));
+        // assert the stream is not paused
+        assert!(temp_stream.isPaused == false, "The stream is paused");
 
-        let withdrawal_amount = temp_stream.rate * u128::from(time_elapsed);
+        // Case: sender withdraws excess amount from the stream after it has ended
+        if (env::predecessor_account_id() == temp_stream.sender) {
+            assert!(env::block_timestamp() > temp_stream.endTime);
 
-        assert!(u128::from(withdrawal_amount) == amount, "amount mismatch! ");
-        let receiver = temp_stream.receiver.clone();
-        Promise::new(receiver).transfer(withdrawal_amount);
-        temp_stream.balance -= withdrawal_amount;
-        self.streams.insert(stream_id, &temp_stream);
+            let withdrawal_amount = temp_stream.rate * u128::from(temp_stream.endTime - temp_stream.withdrawTime);
+            let remaining_balance = temp_stream.balance - withdrawal_amount;
+            let receiver = temp_stream.sender.clone();
+            Promise::new(receiver).transfer(remaining_balance);
+            return;
+        } else if (env::predecessor_account_id() == temp_stream.sender) {
+            let time_elapsed: u64;
+
+            if (env::block_timestamp() >= temp_stream.endTime) {
+                time_elapsed = temp_stream.withdrawTime - temp_stream.endTime;
+            } else {
+                time_elapsed = temp_stream.withdrawTime - env::block_timestamp();
+            }
+
+            let withdrawal_amount = temp_stream.rate * u128::from(time_elapsed);
+
+            let receiver = temp_stream.receiver.clone();
+            Promise::new(receiver).transfer(withdrawal_amount);
+            temp_stream.balance -= withdrawal_amount;
+            temp_stream.withdrawTime = env::block_timestamp();
+            self.streams.insert(stream_id, &temp_stream);
+        } else {
+            // @todo proper error
+            panic!();
+        }
     }
+
     pub fn pause(&mut self, stream_id: &u64) {
+        // Only the sender can pause the stream
         assert!(env::predecessor_account_id() == self.streams.get(stream_id).unwrap().sender);
-        // update the status to paused
+
+        // assert that the stream is already paused
+        let is_paused = self.streams.get(stream_id).unwrap().isPaused;
+        assert!(is_paused == false, "Cannot pause already paused stream");
+
+        // update the stream state
         let mut temp_stream = self.streams.get(stream_id).unwrap();
-        temp_stream.status = StreamStatus::Paused;
+        temp_stream.isPaused = true;
         self.streams.insert(stream_id, &temp_stream);
+
+        // Log
+        log!("Stream paused: {}", temp_stream.id);
     }
 
     pub fn resume(&mut self, stream_id: &u64) {
-        let currnet_status = self.streams.get(stream_id).unwrap().status;
-        assert!(currnet_status == StreamStatus::Paused);
+        // Only the sender can resume the stream
+        assert!(env::predecessor_account_id() == self.streams.get(stream_id).unwrap().sender);
+
+        // assert that the stream is already paused
+        let is_paused = self.streams.get(stream_id).unwrap().isPaused;
+        assert!(is_paused == true, "Cannot resume unpaused stream");
+
         let mut temp_stream = self.streams.get(stream_id).unwrap();
-        temp_stream.status = StreamStatus::Active;
+        temp_stream.isPaused = false;
         self.streams.insert(stream_id, &temp_stream);
+
+        // Log
+        log!("Stream resumed: {}", temp_stream.id);
     }
 }
 
