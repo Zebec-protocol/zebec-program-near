@@ -2,7 +2,6 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, log, near_bindgen, AccountId, Balance, Promise, Timestamp};
 
-// Define the default message
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -24,6 +23,7 @@ pub struct Stream {
     endTime: Timestamp,
     withdrawTime: Timestamp,
     isPaused: bool,
+    pausedTime: Timestamp,
 }
 
 // new @todo
@@ -66,6 +66,7 @@ impl Contract {
             startTime,
             endTime,
             withdrawTime: startTime,
+            pausedTime: startTime,
         };
 
         // calculate the balance is enough
@@ -83,7 +84,7 @@ impl Contract {
 
     pub fn withdraw(&mut self, stream_id: &u64) {
         // get the stream with id: stream_id
-        let mut temp_stream = self.streams.get(stream_id).unwrap(); // panic on error
+        let mut temp_stream = self.streams.get(stream_id).unwrap();
 
         // assert the stream has started
         assert!(env::block_timestamp() > temp_stream.startTime, "The stream has not started yet");
@@ -95,27 +96,45 @@ impl Contract {
         if (env::predecessor_account_id() == temp_stream.sender) {
             assert!(env::block_timestamp() > temp_stream.endTime);
 
+            // Calculate the withdrawl amount
             let withdrawal_amount = temp_stream.rate * u128::from(temp_stream.endTime - temp_stream.withdrawTime);
             let remaining_balance = temp_stream.balance - withdrawal_amount;
-            let receiver = temp_stream.sender.clone();
-            Promise::new(receiver).transfer(remaining_balance);
+            
+            // Transfer tokens to the sender
+            Promise::new(temp_stream.sender).transfer(remaining_balance);
             return;
-        } else if (env::predecessor_account_id() == temp_stream.sender) {
+        } else if (env::predecessor_account_id() == temp_stream.receiver) {
             let time_elapsed: u64;
+            let withdraw_time: u64;
 
+            // Calculate the elapsed time
             if (env::block_timestamp() >= temp_stream.endTime) {
                 time_elapsed = temp_stream.withdrawTime - temp_stream.endTime;
+                withdraw_time = env::block_timestamp();
+
+                if (temp_stream.isPaused) {
+                    temp_stream.withdrawTime += temp_stream.endTime - temp_stream.pausedTime;
+                }
+            }else if (temp_stream.isPaused) {
+                time_elapsed = temp_stream.withdrawTime - temp_stream.pausedTime;
+                withdraw_time = temp_stream.pausedTime;
             } else {
                 time_elapsed = temp_stream.withdrawTime - env::block_timestamp();
+                withdraw_time = env::block_timestamp();
             }
 
+            // Calculate the withdrawal amount
             let withdrawal_amount = temp_stream.rate * u128::from(time_elapsed);
 
+            // Transfer the tokens to the receiver
             let receiver = temp_stream.receiver.clone();
             Promise::new(receiver).transfer(withdrawal_amount);
+
+            // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
-            temp_stream.withdrawTime = env::block_timestamp();
+            temp_stream.withdrawTime = withdraw_time;
             self.streams.insert(stream_id, &temp_stream);
+            return
         } else {
             // @todo proper error
             panic!();
@@ -133,6 +152,7 @@ impl Contract {
         // update the stream state
         let mut temp_stream = self.streams.get(stream_id).unwrap();
         temp_stream.isPaused = true;
+        temp_stream.pausedTime = env::block_timestamp();
         self.streams.insert(stream_id, &temp_stream);
 
         // Log
@@ -149,6 +169,7 @@ impl Contract {
 
         let mut temp_stream = self.streams.get(stream_id).unwrap();
         temp_stream.isPaused = false;
+        temp_stream.withdrawTime += env::block_timestamp() - temp_stream.pausedTime;
         self.streams.insert(stream_id, &temp_stream);
 
         // Log

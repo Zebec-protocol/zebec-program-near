@@ -51,12 +51,13 @@ pub struct Stream {
       - At creation
 
 - [ ] Balance runs out of the stream and the user tries to withdraw
+      - Cannot run out since it is reserved at creation
 
 - [ ] Can provied excess amount while funding
-      - No
+      - Yes
 
 - [ ] Who can trigger withdraw
-      - Receiver 
+      - Receiver only
 
 - [ ] Paused stream, can receiver still withdraw amount until the stream was paused
       - Yes
