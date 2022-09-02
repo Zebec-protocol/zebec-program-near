@@ -40,7 +40,7 @@ pub struct Stream {
 
 - `create_stream()`
 - `withdraw()`
-- `pause()
+- `pause()`
 - `resume()`
 
 ### Views
