@@ -19,14 +19,12 @@ pub struct Stream {
     balance: Balance,
     rate: Balance,
     created: Timestamp,
-    startTime: Timestamp,
-    endTime: Timestamp,
-    withdrawTime: Timestamp,
-    isPaused: bool,
-    pausedTime: Timestamp,
+    start_time: Timestamp,
+    end_time: Timestamp,
+    withdraw_time: Timestamp,
+    is_paused: bool,
+    paused_time: Timestamp,
 }
-
-// new @todo
 
 impl Default for Contract {
     fn default() -> Self {
@@ -50,33 +48,36 @@ impl Contract {
     }
 
     #[payable]
-    pub fn create_stream(&mut self, receiver: AccountId, rate: u128, startTime:Timestamp, endTime: Timestamp) {
+    pub fn create_stream(&mut self, receiver: AccountId, rate: u128, start_time:Timestamp, end_time: Timestamp) {
         // input validation
         let params_key = self.current_id;
-        self.current_id += 1;
+
+        // calculate the balance is enough
+        let stream_duration = end_time - start_time;
+        let stream_amount = u128::from(stream_duration) * rate;
+
+        // check the amount send to the stream
+        assert!(near_sdk::env::attached_deposit() >= stream_amount, "Not enough amount to fund the stream");
 
         let stream_params = Stream {
             id: params_key,
             sender: env::predecessor_account_id(),
             receiver,
             rate,
-            isPaused: false,
+            is_paused: false,
             balance: env::attached_deposit(),
             created: env::block_timestamp(),
-            startTime,
-            endTime,
-            withdrawTime: startTime,
-            pausedTime: startTime,
+            start_time,
+            end_time,
+            withdraw_time: start_time,
+            paused_time: start_time,
         };
 
-        // calculate the balance is enough
-        let stream_duration = endTime - startTime;
-        let stream_amount = u128::from(stream_duration) * rate;
-
-        // check the amount send to the stream
-        assert!(near_sdk::env::attached_deposit() >= stream_amount, "Not enough amount to fund the stream");
-
+        // Save the stream
         self.streams.insert(&params_key, &stream_params);
+
+        // Update the global stream count
+        self.current_id += 1;
 
         // Use env::log to record logs permanently to the blockchain!
         log!("Saving streams {}", stream_params.id);
@@ -87,39 +88,44 @@ impl Contract {
         let mut temp_stream = self.streams.get(stream_id).unwrap();
 
         // assert the stream has started
-        assert!(env::block_timestamp() > temp_stream.startTime, "The stream has not started yet");
+        assert!(env::block_timestamp() > temp_stream.start_time, "The stream has not started yet");
 
         // assert the stream is not paused
-        assert!(temp_stream.isPaused == false, "The stream is paused");
+        assert!(temp_stream.is_paused == false, "The stream is paused");
 
         // Case: sender withdraws excess amount from the stream after it has ended
-        if (env::predecessor_account_id() == temp_stream.sender) {
-            assert!(env::block_timestamp() > temp_stream.endTime);
+        if env::predecessor_account_id() == temp_stream.sender {
+            assert!(env::block_timestamp() > temp_stream.end_time);
 
             // Calculate the withdrawl amount
-            let withdrawal_amount = temp_stream.rate * u128::from(temp_stream.endTime - temp_stream.withdrawTime);
+            let withdrawal_amount = temp_stream.rate * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
             let remaining_balance = temp_stream.balance - withdrawal_amount;
             
             // Transfer tokens to the sender
-            Promise::new(temp_stream.sender).transfer(remaining_balance);
+            let receiver = temp_stream.sender.clone();
+            Promise::new(receiver).transfer(remaining_balance);
+
+            // Update stream and save
+            temp_stream.balance -= withdrawal_amount;
+            self.streams.insert(stream_id, &temp_stream);
             return;
-        } else if (env::predecessor_account_id() == temp_stream.receiver) {
+        } else if env::predecessor_account_id() == temp_stream.receiver {
             let time_elapsed: u64;
             let withdraw_time: u64;
 
             // Calculate the elapsed time
-            if (env::block_timestamp() >= temp_stream.endTime) {
-                time_elapsed = temp_stream.withdrawTime - temp_stream.endTime;
+            if env::block_timestamp() >= temp_stream.end_time {
+                time_elapsed = temp_stream.withdraw_time - temp_stream.end_time;
                 withdraw_time = env::block_timestamp();
 
-                if (temp_stream.isPaused) {
-                    temp_stream.withdrawTime += temp_stream.endTime - temp_stream.pausedTime;
+                if temp_stream.is_paused {
+                    temp_stream.withdraw_time += temp_stream.end_time - temp_stream.paused_time;
                 }
-            }else if (temp_stream.isPaused) {
-                time_elapsed = temp_stream.withdrawTime - temp_stream.pausedTime;
-                withdraw_time = temp_stream.pausedTime;
+            } else if temp_stream.is_paused {
+                time_elapsed = temp_stream.withdraw_time - temp_stream.paused_time;
+                withdraw_time = temp_stream.paused_time;
             } else {
-                time_elapsed = temp_stream.withdrawTime - env::block_timestamp();
+                time_elapsed = temp_stream.withdraw_time - env::block_timestamp();
                 withdraw_time = env::block_timestamp();
             }
 
@@ -132,9 +138,9 @@ impl Contract {
 
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
-            temp_stream.withdrawTime = withdraw_time;
+            temp_stream.withdraw_time = withdraw_time;
             self.streams.insert(stream_id, &temp_stream);
-            return
+            return;
         } else {
             // @todo proper error
             panic!();
@@ -146,13 +152,13 @@ impl Contract {
         assert!(env::predecessor_account_id() == self.streams.get(stream_id).unwrap().sender);
 
         // assert that the stream is already paused
-        let is_paused = self.streams.get(stream_id).unwrap().isPaused;
+        let is_paused = self.streams.get(stream_id).unwrap().is_paused;
         assert!(is_paused == false, "Cannot pause already paused stream");
 
         // update the stream state
         let mut temp_stream = self.streams.get(stream_id).unwrap();
-        temp_stream.isPaused = true;
-        temp_stream.pausedTime = env::block_timestamp();
+        temp_stream.is_paused = true;
+        temp_stream.paused_time = env::block_timestamp();
         self.streams.insert(stream_id, &temp_stream);
 
         // Log
@@ -164,16 +170,54 @@ impl Contract {
         assert!(env::predecessor_account_id() == self.streams.get(stream_id).unwrap().sender);
 
         // assert that the stream is already paused
-        let is_paused = self.streams.get(stream_id).unwrap().isPaused;
+        let is_paused = self.streams.get(stream_id).unwrap().is_paused;
         assert!(is_paused == true, "Cannot resume unpaused stream");
 
         let mut temp_stream = self.streams.get(stream_id).unwrap();
-        temp_stream.isPaused = false;
-        temp_stream.withdrawTime += env::block_timestamp() - temp_stream.pausedTime;
+        temp_stream.is_paused = false;
+        temp_stream.withdraw_time += env::block_timestamp() - temp_stream.paused_time;
         self.streams.insert(stream_id, &temp_stream);
 
         // Log
         log!("Stream resumed: {}", temp_stream.id);
+    }
+
+    pub fn cancel(&mut self, stream_id: &u64) {
+        // Get the stream
+        let mut temp_stream = self.streams.get(stream_id).unwrap();
+
+        // Only the sender can cancel the stream
+        assert!(env::predecessor_account_id() == temp_stream.sender);
+
+        // Stream can only be cancelled if it has not ended
+        assert!(temp_stream.end_time > env::block_timestamp(), "Stream already ended");
+
+        // Amounts to refund to the sender and the receiver
+        let sender_amt: u128;
+        let receiver_amt: u128;
+
+        // Calculate the amount to refund to the receiver
+        if temp_stream.is_paused {
+            receiver_amt = u128::from(temp_stream.paused_time - temp_stream.withdraw_time) * temp_stream.rate;
+        } else {
+            receiver_amt = u128::from(env::block_timestamp() - temp_stream.withdraw_time) * temp_stream.rate;
+        }
+
+        // Calculate the amoun to refund to the sender
+        sender_amt = temp_stream.balance - receiver_amt;
+
+        // Refund the amounts to the sender and the receiver respectively
+        let sender = temp_stream.sender.clone();
+        let receiver = temp_stream.receiver.clone();
+        Promise::new(sender).transfer(sender_amt);
+        Promise::new(receiver).transfer(receiver_amt);
+
+        // Update the stream balance and save
+        temp_stream.balance = 0;
+        self.streams.insert(stream_id, &temp_stream);
+
+        // Log
+        log!("Stream cancelled: {}", temp_stream.id);
     }
 }
 
@@ -183,9 +227,9 @@ mod tests {
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::testing_env;
 
-    const BENEFICIARY: &str = "beneficiary";
-    const BENEFICIARY2: &str = "beneficiary2";
-    const NEAR: u128 = 1000000000000000000000000;
+    // const BENEFICIARY: &str = "beneficiary";
+    // const BENEFICIARY2: &str = "beneficiary2";
+    // const NEAR: u128 = 1000000000000000000000000;
 
     #[test]
     fn initializes() {
