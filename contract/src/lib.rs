@@ -28,9 +28,9 @@ pub struct Stream {
     created: Timestamp,
     start_time: Timestamp,
     end_time: Timestamp,
-    withdraw_time: Timestamp, // last withdraw time 
+    withdraw_time: Timestamp, // last withdraw time
     is_paused: bool,
-    paused_time: Timestamp, // last paused time 
+    paused_time: Timestamp, // last paused time
 }
 
 impl Default for Contract {
@@ -71,7 +71,7 @@ impl Contract {
 
         // check the amount send to the stream
         assert!(env::attached_deposit() == stream_amount, "Not enough amount to fund the stream");
-        
+
         // check that the receiver and sender are not the same
         assert!(env::predecessor_account_id() != receiver, "Sender and receiver cannot be the same");
 
@@ -97,7 +97,6 @@ impl Contract {
         // Update the global stream count for next stream
         self.current_id += 1;
 
-        // Use env::log to record logs permanently to the blockchain!
         log!("Saving streams {}", stream_params.id);
     }
 
@@ -119,7 +118,7 @@ impl Contract {
             assert!(env::block_timestamp() > temp_stream.end_time);
 
             let withdrawal_amount: u128;
-            
+
             if stream.is_paused {
                 withdrawal_amount = temp_stream.rate * u128::from(temp_stream.paused_time - temp_stream.withdraw_time);
             } else {
@@ -172,7 +171,7 @@ impl Contract {
             temp_stream.withdraw_time = withdraw_time;
             self.streams.insert(&id, &temp_stream);
 
-        // 
+        //
         } else {
             // @todo proper error
             panic!();
@@ -222,7 +221,7 @@ impl Contract {
         // resume the stream
         stream.is_paused = false;
 
-        // Update the withdraw_time so that the receiver will not be 
+        // Update the withdraw_time so that the receiver will not be
         // able to withdraw fund for paused time
         if env::block_timestamp() > stream.start_time {
             stream.withdraw_time += stream.end_time - stream.paused_time;
