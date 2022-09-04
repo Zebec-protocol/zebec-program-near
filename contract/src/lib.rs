@@ -48,18 +48,13 @@ impl Contract {
     #[private]
     pub fn new() -> Self {
         assert!(!env::state_exists(), "Already initialized");
-        Self {
-            current_id: 1,
-            streams: UnorderedMap::new(b"p"),
-        }
+        Default::default()
     }
 
     #[payable]
     pub fn create_stream(&mut self, receiver: AccountId, stream_rate: U128, start_time:Timestamp, end_time: Timestamp) {
         // convert id to native u128
         let rate: u128 = stream_rate.into();
-
-        // input validation
 
         // Check the start and end timestamp is valid
         assert!(start_time >= env::block_timestamp(), "Start time cannot be in the past");
@@ -114,7 +109,10 @@ impl Contract {
         let mut temp_stream = self.streams.get(&id).unwrap();
 
         // assert the stream has started
-        assert!(env::block_timestamp() > temp_stream.start_time, "The stream has not started yet");
+        assert!(
+            env::block_timestamp() > temp_stream.start_time,
+            "The stream has not started yet"
+        );
 
         // Case: sender withdraws excess amount from the stream after it has ended
         if env::predecessor_account_id() == temp_stream.sender {
@@ -250,7 +248,10 @@ impl Contract {
         assert!(env::predecessor_account_id() == temp_stream.sender);
 
         // Stream can only be cancelled if it has not ended
-        assert!(temp_stream.end_time > env::block_timestamp(), "Stream already ended");
+        assert!(
+            temp_stream.end_time > env::block_timestamp(),
+            "Stream already ended"
+        );
 
         // Amounts to refund to the sender and the receiver
         let sender_amt: u128;
@@ -258,9 +259,11 @@ impl Contract {
 
         // Calculate the amount to refund to the receiver
         if temp_stream.is_paused {
-            receiver_amt = u128::from(temp_stream.paused_time - temp_stream.withdraw_time) * temp_stream.rate;
+            receiver_amt =
+                u128::from(temp_stream.paused_time - temp_stream.withdraw_time) * temp_stream.rate;
         } else {
-            receiver_amt = u128::from(env::block_timestamp() - temp_stream.withdraw_time) * temp_stream.rate;
+            receiver_amt =
+                u128::from(env::block_timestamp() - temp_stream.withdraw_time) * temp_stream.rate;
         }
 
         // Calculate the amoun to refund to the sender
@@ -283,41 +286,131 @@ impl Contract {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::testing_env;
+    use std::ops::Sub;
 
-    // const BENEFICIARY: &str = "beneficiary";
-    // const BENEFICIARY2: &str = "beneficiary2";
-    // const NEAR: u128 = 1000000000000000000000000;
+    use super::*;
+    use near_sdk::test_utils::accounts;
+    use near_sdk::test_utils::VMContextBuilder;
+    use near_sdk::{testing_env, VMContext};
+
+    const NEAR: u128 = 1000000000000000000000000;
+    // let receiver:AccountId = AccountId::new_unchecked!("receiver.near".to_string());
 
     #[test]
     fn initializes() {
         let contract = Contract::new();
-        // current_id: U128(1),
         assert_eq!(contract.current_id, 1)
     }
 
     #[test]
     fn create_stream() {
+        let start_time: Timestamp = env::block_timestamp();
+        let end_time: Timestamp = start_time + 1728000; // 20 days
+        let sender = "alice"; // alice
+        let receiver = &accounts(1); // bob
+        let rate = 1;
+
+        set_context(sender, 1);
         let mut contract = Contract::new();
 
-        // Make a payment
-        // set_context("caller_a", 1 * NEAR);
-        // contract.send_payment(BENEFICIARY.parse().unwrap());
+        set_context("sender", 100 * NEAR);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+        assert_eq!(contract.current_id, 2);
+        let params_key = 1;
+        let stream = contract.streams.get(&params_key).unwrap();
+        assert!(!stream.is_paused);
+        // @todo add more here
+    }
 
-        // let sent_amount = contract.get_balanceof(BENEFICIARY.parse().unwrap());
+    #[test]
+    fn test_withdraw_stream() {
+        // 1. create_stream contract
+        let start_time: Timestamp = env::block_timestamp();
+        let end_time: Timestamp = start_time + 5;
+        let sender = "alice"; // alice
+        let receiver = &accounts(1); // bob
+        let rate = 1 * NEAR;
+        let mut contract = Contract::new();
 
-        // // Check the donation was recorded correctly
-        // assert_eq!(sent_amount.amount.0, 1 * NEAR);
+        set_context_withdraw(sender, 100 * NEAR, start_time);
+        // 2. create stream
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+        let stream_id:u64 = 1;
+        // 3. call withdraw (action)
+        set_context_withdraw("bob", 0, start_time + 2);
+        contract.withdraw(&stream_id);
+        let internal_balance = contract.streams.get(&stream_id).unwrap().balance;
+        let contract_balance = env::account_balance();
+        // 4. assert internal balance
+        assert!(contract_balance == 98 * NEAR);
+        assert!(internal_balance == 98 * NEAR);
+        // 5. receiver balance
 
-        // // Make another donation
-        // set_context("caller2", 2 * NEAR);
-        // contract.send_payment(BENEFICIARY2.parse().unwrap());
-        // let sent_amount2 = contract.get_balanceof(BENEFICIARY2.parse().unwrap());
 
-        // // Check the donation was recorded correctly
-        // assert_eq!(sent_amount2.amount.0, 2 * NEAR);
+    }
+    #[test]
+    fn test_pause() {
+        // 1. create_stream contract
+        let start_time: Timestamp = env::block_timestamp();
+        let end_time: Timestamp = start_time+ 1728000; // 20 days ?
+        let sender = "alice"; // alice
+        let receiver = &accounts(1); // bob
+        let rate = 1;
+        set_context(sender, 1);
+        let mut contract = Contract::new();
+
+        set_context("sender", 100 * NEAR);
+        // 2. create stream
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+        let stream_id = 1;
+        // 3. pause
+        contract.pause(&stream_id);
+        // 4. assert
+        assert!(contract.streams.get(&stream_id).unwrap().is_paused);
+    }
+    #[test]
+    #[should_panic(expected="Cannot pause already paused stream")]
+    fn double_pause_panic() {
+        // 1. create_stream contract
+        let start_time: Timestamp = env::block_timestamp();
+        let end_time: Timestamp = start_time+ 1728000; // 20 days ?
+        let sender = "alice"; // alice
+        let receiver = &accounts(1); // bob
+        let rate = 1;
+        set_context(sender, 1);
+        let mut contract = Contract::new();
+
+        set_context("sender", 100 * NEAR);
+        // 2. create stream
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+        let stream_id = 1;
+        // 3. pause
+        contract.pause(&stream_id);
+        // 4. double pause panic
+        assert!(!contract.streams.get(&stream_id).unwrap().is_paused);
+    }
+
+    #[test]
+    fn test_resume() {
+        // 1. create_stream contract
+        let start_time: Timestamp = env::block_timestamp();
+        let end_time: Timestamp = start_time+ 1728000; // 20 days ?
+        let sender = "alice"; // alice
+        let receiver = &accounts(1); // bob
+        let rate = 1;
+        set_context(sender, 1);
+        let mut contract = Contract::new();
+
+        set_context("sender", 100 * NEAR);
+        // 2. create stream
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+        let stream_id = 1;
+        // 3. pause first
+        contract.pause(&stream_id);
+        // 4. resume()
+        contract.resume(&stream_id);
+        // 5. assert not paused
+        assert!(!contract.streams.get(&stream_id).unwrap().is_paused);
     }
 
     // Auxiliar fn: create a mock context
@@ -325,17 +418,16 @@ mod tests {
         let mut builder = VMContextBuilder::new();
         builder.predecessor_account_id(predecessor.parse().unwrap());
         builder.attached_deposit(amount);
-
+        // builder.block_index(block_index);
         testing_env!(builder.build());
     }
 
-    // Auxiliar fn: create a mock context
-    fn set_context(predecessor: &str, amount: Balance) {
+    fn set_context_withdraw(predecessor: &str, amount: Balance, ts: u64) {
         let mut builder = VMContextBuilder::new();
         builder.predecessor_account_id(predecessor.parse().unwrap());
         builder.attached_deposit(amount);
-
+        // let mut current_block_time = env::block_timestamp();
+        builder.block_timestamp(ts);
         testing_env!(builder.build());
     }
-
 }
