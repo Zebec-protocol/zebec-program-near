@@ -28,9 +28,9 @@ pub struct Stream {
     created: Timestamp,
     start_time: Timestamp,
     end_time: Timestamp,
-    withdraw_time: Timestamp,
+    withdraw_time: Timestamp, // last withdraw time 
     is_paused: bool,
-    paused_time: Timestamp,
+    paused_time: Timestamp, // last paused time 
 }
 
 impl Default for Contract {
@@ -45,7 +45,7 @@ impl Default for Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    #[private] // Public - but only callable by env::current_account_id()
+    #[private]
     pub fn new() -> Self {
         assert!(!env::state_exists(), "Already initialized");
         Self {
@@ -56,29 +56,31 @@ impl Contract {
 
     #[payable]
     pub fn create_stream(&mut self, receiver: AccountId, stream_rate: U128, start_time:Timestamp, end_time: Timestamp) {
-        // convert id to native u64
+        // convert id to native u128
         let rate: u128 = stream_rate.into();
 
         // input validation
-        let params_key = self.current_id;
+
+        // Check the start and end timestamp is valid
+        assert!(start_time >= env::block_timestamp(), "Start time cannot be in the past");
+        assert!(end_time >= start_time, "Start time cannot be in the past");
+
+
+        // check the rate is valid
+        assert!(rate > 0, "Rate cannot be zero");
+        assert!(rate < MAX_RATE, "Rate cannot be zero");
 
         // calculate the balance is enough
         let stream_duration = end_time - start_time;
         let stream_amount = u128::from(stream_duration) * rate;
 
         // check the amount send to the stream
-        assert!(env::attached_deposit() >= stream_amount, "Not enough amount to fund the stream");
+        assert!(env::attached_deposit() == stream_amount, "Not enough amount to fund the stream");
         
         // check that the receiver and sender are not the same
         assert!(env::predecessor_account_id() != receiver, "Sender and receiver cannot be the same");
 
-        // check the rate is valid
-        assert!(rate > 0, "Rate cannot be zero");
-        assert!(rate < MAX_RATE, "Rate cannot be zero");
-
-        // Check the start and end timestamp is valid
-        assert!(start_time >= env::block_timestamp(), "Start time cannot be in the past");
-        assert!(end_time >= start_time, "Start time cannot be in the past");
+        let params_key = self.current_id;
 
         let stream_params = Stream {
             id: params_key,
@@ -97,7 +99,7 @@ impl Contract {
         // Save the stream
         self.streams.insert(&params_key, &stream_params);
 
-        // Update the global stream count
+        // Update the global stream count for next stream
         self.current_id += 1;
 
         // Use env::log to record logs permanently to the blockchain!
@@ -114,15 +116,19 @@ impl Contract {
         // assert the stream has started
         assert!(env::block_timestamp() > temp_stream.start_time, "The stream has not started yet");
 
-        // assert the stream is not paused
-        assert!(temp_stream.is_paused == false, "The stream is paused");
-
         // Case: sender withdraws excess amount from the stream after it has ended
         if env::predecessor_account_id() == temp_stream.sender {
             assert!(env::block_timestamp() > temp_stream.end_time);
 
+            let withdrawal_amount: u128;
+            
+            if stream.is_paused {
+                withdrawal_amount = temp_stream.rate * u128::from(temp_stream.paused_time - temp_stream.withdraw_time);
+            } else {
+                withdrawal_amount = temp_stream.rate * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
+            }
+
             // Calculate the withdrawl amount
-            let withdrawal_amount = temp_stream.rate * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
             let remaining_balance = temp_stream.balance - withdrawal_amount;
 
             // Transfer tokens to the sender
@@ -132,7 +138,6 @@ impl Contract {
             // Update stream and save
             temp_stream.balance -= remaining_balance;
             self.streams.insert(&id, &temp_stream);
-            return;
 
         // Case: Receiver can withdraw the amount fromt the stream
         } else if env::predecessor_account_id() == temp_stream.receiver {
@@ -141,14 +146,15 @@ impl Contract {
 
             // Calculate the elapsed time
             if env::block_timestamp() >= temp_stream.end_time {
-                time_elapsed = temp_stream.withdraw_time - temp_stream.end_time;
+                time_elapsed = temp_stream.end_time - temp_stream.withdraw_time;
                 withdraw_time = env::block_timestamp();
 
+                // this block is not necessary
                 if temp_stream.is_paused {
                     temp_stream.withdraw_time += temp_stream.end_time - temp_stream.paused_time;
                 }
             } else if temp_stream.is_paused {
-                time_elapsed = temp_stream.withdraw_time - temp_stream.paused_time;
+                time_elapsed = temp_stream.paused_time - temp_stream.withdraw_time;
                 withdraw_time = temp_stream.paused_time;
             } else {
                 time_elapsed = env::block_timestamp() - temp_stream.withdraw_time;
@@ -160,13 +166,13 @@ impl Contract {
 
             // Transfer the tokens to the receiver
             let receiver = temp_stream.receiver.clone();
+            assert!(withdrawal_amount > 0);
             Promise::new(receiver).transfer(withdrawal_amount);
 
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
             self.streams.insert(&id, &temp_stream);
-            return;
 
         // 
         } else {
@@ -176,6 +182,9 @@ impl Contract {
     }
 
     pub fn pause(&mut self, stream_id: U64) {
+        // Only the sender can pause the stream
+        assert!(env::predecessor_account_id() == stream.sender);
+
         // convert id to native u64
         let id: u64 = stream_id.into();
 
@@ -185,9 +194,6 @@ impl Contract {
         // Can only be paused after the stream has started and before it has ended
         let can_pause = env::block_timestamp() > stream.start_time && env::block_timestamp() < stream.end_time;
         assert!(can_pause, "Can only be pause after stream starts and before it has ended");
-
-        // Only the sender can pause the stream
-        assert!(env::predecessor_account_id() == stream.sender);
 
         // assert that the stream is already paused
         assert!(!stream.is_paused, "Cannot pause already paused stream");
@@ -213,7 +219,7 @@ impl Contract {
 
         // assert that the stream is already paused
         let is_paused = self.streams.get(&id).unwrap().is_paused;
-        assert!(is_paused == true, "Cannot resume unpaused stream");
+        assert!(is_paused, "Cannot resume unpaused stream");
 
         // resume the stream
         stream.is_paused = false;
