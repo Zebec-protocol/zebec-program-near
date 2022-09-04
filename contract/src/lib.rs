@@ -2,6 +2,8 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, log, near_bindgen, AccountId, Balance, Promise, Timestamp};
 
+use near_sdk::json_types::{U128, U64};
+
 pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
 pub const ONE_YOCTO: Balance = 1;
 pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
@@ -53,7 +55,10 @@ impl Contract {
     }
 
     #[payable]
-    pub fn create_stream(&mut self, receiver: AccountId, rate: u128, start_time:Timestamp, end_time: Timestamp) {
+    pub fn create_stream(&mut self, receiver: AccountId, stream_rate: U128, start_time:Timestamp, end_time: Timestamp) {
+        // convert id to native u64
+        let rate: u128 = stream_rate.into();
+
         // input validation
         let params_key = self.current_id;
 
@@ -99,9 +104,12 @@ impl Contract {
         log!("Saving streams {}", stream_params.id);
     }
 
-    pub fn withdraw(&mut self, stream_id: &u64) {
+    pub fn withdraw(&mut self, stream_id: U64) {
+        // convert id to native u64
+        let id: u64 = stream_id.into();
+
         // get the stream with id: stream_id
-        let mut temp_stream = self.streams.get(stream_id).unwrap();
+        let mut temp_stream = self.streams.get(&id).unwrap();
 
         // assert the stream has started
         assert!(env::block_timestamp() > temp_stream.start_time, "The stream has not started yet");
@@ -123,7 +131,7 @@ impl Contract {
 
             // Update stream and save
             temp_stream.balance -= remaining_balance;
-            self.streams.insert(stream_id, &temp_stream);
+            self.streams.insert(&id, &temp_stream);
             return;
 
         // Case: Receiver can withdraw the amount fromt the stream
@@ -143,7 +151,7 @@ impl Contract {
                 time_elapsed = temp_stream.withdraw_time - temp_stream.paused_time;
                 withdraw_time = temp_stream.paused_time;
             } else {
-                time_elapsed = temp_stream.withdraw_time - env::block_timestamp();
+                time_elapsed = env::block_timestamp() - temp_stream.withdraw_time;
                 withdraw_time = env::block_timestamp();
             }
 
@@ -157,7 +165,7 @@ impl Contract {
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
-            self.streams.insert(stream_id, &temp_stream);
+            self.streams.insert(&id, &temp_stream);
             return;
 
         // 
@@ -167,49 +175,70 @@ impl Contract {
         }
     }
 
-    pub fn pause(&mut self, stream_id: &u64) {
+    pub fn pause(&mut self, stream_id: U64) {
+        // convert id to native u64
+        let id: u64 = stream_id.into();
+
         // get the stream
-        let mut stream = self.streams.get(stream_id).unwrap();
+        let mut stream = self.streams.get(&id).unwrap();
+
+        // Can only be paused after the stream has started and before it has ended
+        let can_pause = env::block_timestamp() > stream.start_time && env::block_timestamp() < stream.end_time;
+        assert!(can_pause, "Can only be pause after stream starts and before it has ended");
 
         // Only the sender can pause the stream
         assert!(env::predecessor_account_id() == stream.sender);
 
         // assert that the stream is already paused
-        let is_paused = stream.is_paused;
-        assert!(!is_paused, "Cannot pause already paused stream");
+        assert!(!stream.is_paused, "Cannot pause already paused stream");
 
         // update the stream state
         stream.is_paused = true;
         stream.paused_time = env::block_timestamp();
-        self.streams.insert(stream_id, &stream);
+        self.streams.insert(&id, &stream);
 
         // Log
         log!("Stream paused: {}", stream.id);
     }
 
-    pub fn resume(&mut self, stream_id: &u64) {
+    pub fn resume(&mut self, stream_id: U64) {
+        // convert id to native u64
+        let id: u64 = stream_id.into();
+
         // get the stream
-        let mut stream = self.streams.get(stream_id).unwrap();
+        let mut stream = self.streams.get(&id).unwrap();
 
         // Only the sender can resume the stream
         assert!(env::predecessor_account_id() == stream.sender);
 
         // assert that the stream is already paused
-        let is_paused = self.streams.get(stream_id).unwrap().is_paused;
+        let is_paused = self.streams.get(&id).unwrap().is_paused;
         assert!(is_paused == true, "Cannot resume unpaused stream");
 
+        // resume the stream
         stream.is_paused = false;
-        stream.withdraw_time += env::block_timestamp() - stream.paused_time;
+
+        // Update the withdraw_time so that the receiver will not be 
+        // able to withdraw fund for paused time
+        if env::block_timestamp() > stream.start_time {
+            stream.withdraw_time += stream.end_time - stream.paused_time;
+        } else {
+            stream.withdraw_time += env::block_timestamp() - stream.paused_time;
+        }
+        // Reset the paused_time and save
         stream.paused_time = 0;
-        self.streams.insert(stream_id, &stream);
+        self.streams.insert(&id, &stream);
 
         // Log
         log!("Stream resumed: {}", stream.id);
     }
 
-    pub fn cancel(&mut self, stream_id: &u64) {
+    pub fn cancel(&mut self, stream_id: U64) {
+        // convert id to native u64
+        let id: u64 = stream_id.into();
+
         // Get the stream
-        let mut temp_stream = self.streams.get(stream_id).unwrap();
+        let mut temp_stream = self.streams.get(&id).unwrap();
 
         // Only the sender can cancel the stream
         assert!(env::predecessor_account_id() == temp_stream.sender);
@@ -239,7 +268,7 @@ impl Contract {
 
         // Update the stream balance and save
         temp_stream.balance = 0;
-        self.streams.insert(stream_id, &temp_stream);
+        self.streams.insert(&id, &temp_stream);
 
         // Log
         log!("Stream cancelled: {}", temp_stream.id);
