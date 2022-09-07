@@ -115,6 +115,11 @@ impl Contract {
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
 
+        assert!(
+            temp_stream.balance > 0,
+            "No balance to withdraw"
+        );
+
         // assert the stream has started
         assert!(
             env::block_timestamp() > temp_stream.start_time,
@@ -135,12 +140,17 @@ impl Contract {
                 withdrawal_amount = temp_stream.rate
                     * u128::from(temp_stream.paused_time - temp_stream.withdraw_time);
             } else {
-                withdrawal_amount =
+                if temp_stream.end_time > temp_stream.withdraw_time { // receiver has not withdrawn after stream ended
+                    withdrawal_amount =
                     temp_stream.rate * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
+                } else {
+                    withdrawal_amount = 0;
+                }
             }
 
             // Calculate the withdrawl amount
             let remaining_balance = temp_stream.balance - withdrawal_amount;
+            assert!(remaining_balance > 0, "Already withdrawn");
 
             // Transfer tokens to the sender
             let receiver = temp_stream.sender.clone();
@@ -157,13 +167,15 @@ impl Contract {
 
             // Calculate the elapsed time
             if env::block_timestamp() >= temp_stream.end_time {
-                time_elapsed = temp_stream.end_time - temp_stream.withdraw_time;
+                assert!(temp_stream.withdraw_time < temp_stream.end_time, "Already withdrawn");
+                println!("{}, {}", temp_stream.end_time, temp_stream.withdraw_time);
                 withdraw_time = env::block_timestamp();
 
-                // this block is not necessary
                 if temp_stream.is_paused {
-                    temp_stream.withdraw_time += temp_stream.end_time - temp_stream.paused_time;
-                } 
+                    time_elapsed = temp_stream.paused_time - temp_stream.withdraw_time;
+                } else {
+                    time_elapsed = temp_stream.end_time - temp_stream.withdraw_time;
+                }
             } else if temp_stream.is_paused {
                 time_elapsed = temp_stream.paused_time - temp_stream.withdraw_time;
                 withdraw_time = temp_stream.paused_time;
@@ -180,13 +192,14 @@ impl Contract {
             assert!(withdrawal_amount > 0);
             Promise::new(receiver).transfer(withdrawal_amount);
 
+            println!("{} {}", temp_stream.balance, withdrawal_amount);
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
             self.streams.insert(&id, &temp_stream);
         } else {
             // @todo proper error
-            panic!();
+            assert!(false, "You dont have permission to withdraw");
         }
     }
 
@@ -587,6 +600,214 @@ mod tests {
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
         assert_eq!(internal_balance, 8 * NEAR);
+    }
+
+
+    #[test]
+    fn test_sender_withdraws_before_sender() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+
+        let stream_start_time: u64 = start_time.into();
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+
+        // pause and resume the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        contract.pause(stream_id);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
+        contract.resume(stream_id);
+
+        // 3. sender call withdraw after stream has ended (action)
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        contract.withdraw(stream_id);
+
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 16 * NEAR);
+
+        // 3. receiver call withdraw
+        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 25);
+        contract.withdraw(stream_id);
+        
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 0);
+    }
+
+    #[test]
+    fn test_receiver_withdraws_before_sender() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+
+        let stream_start_time: u64 = start_time.into();
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+
+        // pause and resume the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        contract.pause(stream_id);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
+        contract.resume(stream_id);
+
+        // 3. sender call withdraw after stream has ended (action)
+        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
+        contract.withdraw(stream_id);
+
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 4 * NEAR);
+
+        // 3. receiver call withdraw
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 25);
+        contract.withdraw(stream_id);
+        
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Already withdrawn")]
+    fn test_receiver_tries_multiple_withdraw() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+
+        let stream_start_time: u64 = start_time.into();
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+
+        // pause and resume the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        contract.pause(stream_id);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
+        contract.resume(stream_id);
+
+        // 3. receiver call withdraw after stream has ended (action)
+        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
+        contract.withdraw(stream_id);
+
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 4 * NEAR);
+
+        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
+        contract.withdraw(stream_id); // panics here
+    }
+
+    #[test]
+    #[should_panic(expected = "Already withdrawn")]
+    fn test_sender_tries_multiple_withdraw() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+
+        let stream_start_time: u64 = start_time.into();
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+
+        // pause and resume the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        contract.pause(stream_id);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
+        contract.resume(stream_id);
+
+        // 3. sender call withdraw after stream has ended (action)
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        contract.withdraw(stream_id);
+
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 16 * NEAR);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        contract.withdraw(stream_id); // panics here
+
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 16 * NEAR);
+    }
+
+    #[test]
+    fn test_withdraw_after_end_on_paused() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+
+        let stream_start_time: u64 = start_time.into();
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+
+        // pause and resume the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        contract.pause(stream_id);
+
+        // 3. sender call withdraw after stream has ended (action)
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        contract.withdraw(stream_id);
+
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 9 * NEAR);
+
+        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 25);
+        contract.withdraw(stream_id); // panics here
+
+        // 4. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        assert_eq!(internal_balance, 0);
     }
 
     #[test]
