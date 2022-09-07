@@ -1,13 +1,15 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
 use near_sdk::{env, log, near_bindgen, AccountId, Balance, PanicOnDefault, Promise, Timestamp};
-
+use near_sdk::serde::{Serialize, Deserialize};
 use near_sdk::json_types::{U128, U64};
 
 pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
 pub const ONE_YOCTO: Balance = 1;
 pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
+
+mod views;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -18,7 +20,8 @@ pub struct Contract {
 
 // Define the stream structure
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Clone)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
 pub struct Stream {
     id: u64,
     sender: AccountId,
@@ -160,7 +163,7 @@ impl Contract {
                 // this block is not necessary
                 if temp_stream.is_paused {
                     temp_stream.withdraw_time += temp_stream.end_time - temp_stream.paused_time;
-                }
+                } 
             } else if temp_stream.is_paused {
                 time_elapsed = temp_stream.paused_time - temp_stream.withdraw_time;
                 withdraw_time = temp_stream.paused_time;
