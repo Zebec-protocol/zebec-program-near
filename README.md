@@ -1,66 +1,46 @@
 # Zebec contracts
+Implementation of Zebec in near protocol
 
 ## Structures
 
 #### Basic structs
 
-- `AccountId: string`
-- `StreamId: string`
-
-
 ```rust
+pub struct Contract {
+    current_id: u64,
+    streams: UnorderedMap<u64, Stream>,
+}
+
+```
+
+```
 pub struct Stream {
-    id: String,
+    id: u64,
     sender: AccountId,
     receiver: AccountId,
-    balance: U128,
-    rate: U128,  
+    balance: Balance,
+    rate: Balance,
     created: Timestamp,
-    status: StreamStatus,
-    startTime: Timestamp,
-    endTime: Timestamp,
-    withdrawTime: Timestamp,
-    isPaused: bool,
+    start_time: Timestamp,
+    end_time: Timestamp,
+    withdraw_time: Timestamp, // last withdraw time
+    is_paused: bool,
+    paused_time: Timestamp, // last paused time
 }
 ```
 
 
 ## Main methods
 
-- `create_stream()`
-- `withdraw()`
-- `pause()`
-- `resume()`
+### public functions
+- `create_stream(&mut self, receiver: AccountId, stream_rate: U128, start: U64, end: U64)` - Create a new stream with given information
+
+- `withdraw(&mut self, stream_id: U64)` - Withdraw amount accrued in the stream or the excess amount after the stream has ended
+- `pause(&mut self, stream_id: U64)` - Pause the stream
+- `resume(&mut self, stream_id: U64)` - Resume the stream
+- `cancel(&mut self, stream_id: U64)` - Cancel the stream
 
 ### Views
 
 - `get_stream(stream_id)` : returns all the details of the `stream_id`
 
-### Todos
-
-- [x] data-structures and main functions (with input guards for input sanity)
-- [x] view functions & events, uint tests
-- [ ] finalize native token integration and handle gas (gas fee, Near deposits, refunds, storage staking)
-- [ ] testnet deployment
-- [ ] cross-contract calls and stablecoin integration
-- [ ] finalize unit tests and integration
-
-
-### Edge Cases
-- [ ] How does funding works, does all amount needs to be funded at creation
-      - At creation
-
-- [ ] Balance runs out of the stream and the user tries to withdraw
-      - Cannot run out since it is reserved at creation
-
-- [ ] Can provied excess amount while funding
-      - Yes
-
-- [ ] Who can trigger withdraw
-      - Receiver only
-
-- [ ] Paused stream, can receiver still withdraw amount until the stream was paused
-      - Yes
-
-- [ ] Paused and resumed, can the user get the amount for the paused duration or not
-      - No
