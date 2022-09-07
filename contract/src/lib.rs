@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::{env, log, near_bindgen, AccountId, Balance, Promise, Timestamp};
+use near_sdk::{env, log, near_bindgen, AccountId, Balance, PanicOnDefault, Promise, Timestamp};
 
 use near_sdk::json_types::{U128, U64};
 
@@ -10,7 +10,7 @@ pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
 
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize)]
+#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     current_id: u64,
     streams: UnorderedMap<u64, Stream>,
@@ -33,22 +33,15 @@ pub struct Stream {
     paused_time: Timestamp, // last paused time
 }
 
-impl Default for Contract {
-    fn default() -> Self {
+#[near_bindgen]
+impl Contract {
+    #[init]
+    pub fn new() -> Self {
+        assert!(!env::state_exists(), "Already initialized");
         Self {
             current_id: 1,
             streams: UnorderedMap::new(b"p"),
         }
-    }
-}
-
-#[near_bindgen]
-impl Contract {
-    #[init]
-    #[private]
-    pub fn new() -> Self {
-        assert!(!env::state_exists(), "Already initialized");
-        Default::default()
     }
 
     #[payable]
