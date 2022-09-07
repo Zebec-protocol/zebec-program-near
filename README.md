@@ -7,14 +7,6 @@
 - `AccountId: string`
 - `StreamId: string`
 
-```rust
-pub enum StreamStatus {
-    Initialized,
-    Active,
-    Paused,
-    Finished,
-}
-```
 
 ```rust
 pub struct Stream {
@@ -25,22 +17,19 @@ pub struct Stream {
     rate: U128,  
     created: Timestamp,
     status: StreamStatus,
+    startTime: Timestamp,
+    endTime: Timestamp,
+    withdrawTime: Timestamp,
+    isPaused: bool,
 }
 ```
 
-#### `Stream` status
-
-- Enums of state
-  - Initialized
-  - Active
-  - Paused
-  - Finished
 
 ## Main methods
 
 - `create_stream()`
 - `withdraw()`
-- `pause()
+- `pause()`
 - `resume()`
 
 ### Views
@@ -55,3 +44,23 @@ pub struct Stream {
 - [ ] testnet deployment
 - [ ] cross-contract calls and stablecoin integration
 - [ ] finalize unit tests and integration
+
+
+### Edge Cases
+- [ ] How does funding works, does all amount needs to be funded at creation
+      - At creation
+
+- [ ] Balance runs out of the stream and the user tries to withdraw
+      - Cannot run out since it is reserved at creation
+
+- [ ] Can provied excess amount while funding
+      - Yes
+
+- [ ] Who can trigger withdraw
+      - Receiver only
+
+- [ ] Paused stream, can receiver still withdraw amount until the stream was paused
+      - Yes
+
+- [ ] Paused and resumed, can the user get the amount for the paused duration or not
+      - No
