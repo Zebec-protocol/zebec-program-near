@@ -1,7 +1,4 @@
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedMap;
-use near_sdk::json_types::U128;
-use near_sdk::{env, log, near_bindgen, AccountId, Balance, Promise};
+use near_sdk::{near_bindgen};
 
 use crate::*;
 
@@ -10,7 +7,17 @@ use crate::*;
 
 #[near_bindgen]
 impl Contract {
-    pub fn get_stream(&self, stream_id: Stream) -> Stream {
-        self.streams.get(stream_id).unwrap()
+    pub fn get_stream(&self, stream_id: U64) -> Stream {
+        let id: u64 = stream_id.into();
+        self.streams.get(&id).unwrap()
+    }
+
+    // for testing only
+    pub fn get_streams(&self) -> Vec<Stream> {
+        let mut res: Vec<Stream> = [].to_vec();
+        for i in 0..self.streams.len() {
+            res.push(self.streams.get(&i).unwrap());
+        }
+        return res;
     }
 }
