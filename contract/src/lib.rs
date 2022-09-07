@@ -4,12 +4,18 @@ use near_sdk::{env, log, near_bindgen, AccountId, Balance, PanicOnDefault, Promi
 use near_sdk::serde::{Serialize, Deserialize};
 use near_sdk::json_types::{U128, U64};
 
+mod calls;
+mod views;
+
 pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
 pub const ONE_YOCTO: Balance = 1;
 pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
-pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
+                                                                 // tokens per second
+pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR // @todo change to something lower ?
 
-mod views;
+// @todo
+// pub const NEAR_TOKEN_ID: AccountId ="NEAR".parse().unwrap()
+
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -34,6 +40,7 @@ pub struct Stream {
     withdraw_time: Timestamp, // last withdraw time
     is_paused: bool,
     paused_time: Timestamp, // last paused time
+    contract_id: AccountId,// address of the token contract, 0 for near??
 }
 
 #[near_bindgen]
@@ -95,6 +102,7 @@ impl Contract {
             end_time,
             withdraw_time: start_time,
             paused_time: start_time,
+            contract_id: "NEAR".parse().unwrap()
         };
 
         // Save the stream
@@ -117,6 +125,7 @@ impl Contract {
             temp_stream.balance > 0,
             "No balance to withdraw"
         );
+        assert!(temp_stream.contract_id == "NEAR".parse().unwrap());
 
         // assert the stream has started
         require!(
