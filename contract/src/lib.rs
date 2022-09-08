@@ -50,9 +50,9 @@ impl Contract {
     #[payable]
     pub fn create_stream(&mut self, receiver: AccountId, stream_rate: U128, start: U64, end: U64) {
         // convert id to native u128
-        let rate: u128 = stream_rate.into();
-        let start_time: u64 = start.into();
-        let end_time: u64 = end.into();
+        let rate: u128 = stream_rate.0;
+        let start_time: u64 = start.0;
+        let end_time: u64 = end.0;
 
         // Check the start and end timestamp is valid
         assert!(
@@ -110,7 +110,7 @@ impl Contract {
 
     pub fn withdraw(&mut self, stream_id: U64) {
         // convert id to native u64
-        let id: u64 = stream_id.into();
+        let id: u64 = stream_id.0;
 
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
@@ -205,7 +205,7 @@ impl Contract {
 
     pub fn pause(&mut self, stream_id: U64) {
         // convert id to native u64
-        let id: u64 = stream_id.into();
+        let id: u64 = stream_id.0;
 
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
@@ -235,7 +235,7 @@ impl Contract {
 
     pub fn resume(&mut self, stream_id: U64) {
         // convert id to native u64
-        let id: u64 = stream_id.into();
+        let id: u64 = stream_id.0;
 
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
@@ -268,7 +268,7 @@ impl Contract {
 
     pub fn cancel(&mut self, stream_id: U64) {
         // convert id to native u64
-        let id: u64 = stream_id.into();
+        let id: u64 = stream_id.0;
 
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
@@ -367,10 +367,10 @@ mod tests {
         assert_eq!(stream.sender, sender.clone());
         assert_eq!(stream.receiver, accounts(1));
         assert_eq!(stream.balance, 172800 * NEAR);
-        assert_eq!(stream.rate, rate.into());
+        assert_eq!(stream.rate, rate.0);
 
-        let stream_start_time: u64 = start_time.into();
-        let stream_end_time: u64 = end_time.into();
+        let stream_start_time: u64 = start_time.0;
+        let stream_end_time: u64 = end_time.0;
 
         assert_eq!(stream.start_time, stream_start_time);
         assert_eq!(stream.end_time, stream_end_time);
@@ -392,23 +392,23 @@ mod tests {
         let stream_id = U64::from(1);
 
         // 2. create stream
-        set_context_with_balance_timestamp(sender.clone(), 10 * NEAR, start_time.into());
+        set_context_with_balance_timestamp(sender.clone(), 10 * NEAR, start_time.0);
         contract.create_stream(receiver.clone(), rate, start_time, end_time);
 
         // 4. assert internal balance
         // Check the contract balance after stream is created
-        set_context_with_balance_timestamp(env::current_account_id(), 10 * NEAR, start_time.into());
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        set_context_with_balance_timestamp(env::current_account_id(), 10 * NEAR, start_time.0);
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert!(internal_balance == 10 * NEAR);
 
         // 3. call withdraw (action)
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
         set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 2);
 
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let stream = contract.streams.get(&stream_id.into()).unwrap();
+        let stream = contract.streams.get(&stream_id.0).unwrap();
         let internal_balance = stream.balance;
 
         assert_eq!(internal_balance, 8 * NEAR);
@@ -430,11 +430,11 @@ mod tests {
         let stream_id = U64::from(1);
 
         // 2. create stream
-        set_context_with_balance_timestamp(sender.clone(), 10 * NEAR, start_time.into());
+        set_context_with_balance_timestamp(sender.clone(), 10 * NEAR, start_time.0);
         contract.create_stream(receiver.clone(), rate, start_time, end_time);
 
         // 3. call withdraw (action)
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 2);
         contract.withdraw(stream_id);
     }
@@ -452,7 +452,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 10 * NEAR, stream_start_time);
         contract.create_stream(receiver.clone(), rate, start_time, end_time);
@@ -469,7 +469,7 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 8 * NEAR);
     }
 
@@ -486,7 +486,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 10 * NEAR, stream_start_time);
         contract.create_stream(receiver.clone(), rate, start_time, end_time);
@@ -500,7 +500,7 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 4 * NEAR);
     }
 
@@ -517,7 +517,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
 
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
@@ -549,7 +549,7 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 12 * NEAR);
     }
 
@@ -566,7 +566,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
 
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
@@ -598,7 +598,7 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 8 * NEAR);
     }
 
@@ -616,7 +616,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
 
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
@@ -634,7 +634,7 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 16 * NEAR);
 
         // 3. receiver call withdraw
@@ -642,7 +642,7 @@ mod tests {
         contract.withdraw(stream_id);
         
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);
     }
 
@@ -659,7 +659,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
 
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
@@ -677,7 +677,7 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 4 * NEAR);
 
         // 3. receiver call withdraw
@@ -685,7 +685,7 @@ mod tests {
         contract.withdraw(stream_id);
         
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);
     }
 
@@ -703,7 +703,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
 
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
@@ -721,7 +721,7 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 4 * NEAR);
 
         set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
@@ -742,7 +742,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
 
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
@@ -760,14 +760,14 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 16 * NEAR);
 
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
         contract.withdraw(stream_id); // panics here
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 16 * NEAR);
     }
 
@@ -784,7 +784,7 @@ mod tests {
 
         let stream_id = U64::from(1);
 
-        let stream_start_time: u64 = start_time.into();
+        let stream_start_time: u64 = start_time.0;
 
         // 2. create stream
         set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
@@ -799,14 +799,14 @@ mod tests {
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 9 * NEAR);
 
         set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 25);
         contract.withdraw(stream_id); // panics here
 
         // 4. assert internal balance
-        let internal_balance = contract.streams.get(&stream_id.into()).unwrap().balance;
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);
     }
 
@@ -832,7 +832,7 @@ mod tests {
         contract.pause(stream_id);
 
         // 4. assert
-        assert!(contract.streams.get(&stream_id.into()).unwrap().is_paused);
+        assert!(contract.streams.get(&stream_id.0).unwrap().is_paused);
     }
 
     #[test]
@@ -883,7 +883,7 @@ mod tests {
         contract.resume(stream_id);
 
         // 4. assert
-        let stream = contract.streams.get(&stream_id.into()).unwrap();
+        let stream = contract.streams.get(&stream_id.0).unwrap();
         assert!(!stream.is_paused);
         assert_eq!(stream.withdraw_time, start + 3);
     }
