@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::{env, log, near_bindgen, AccountId, Balance, PanicOnDefault, Promise, Timestamp};
+use near_sdk::{env, log, near_bindgen, AccountId, Balance, PanicOnDefault, Promise, Timestamp, require};
 use near_sdk::serde::{Serialize, Deserialize};
 use near_sdk::json_types::{U128, U64};
 
@@ -108,7 +108,7 @@ impl Contract {
         log!("Saving streams {}", stream_params.id);
     }
 
-    pub fn withdraw(&mut self, stream_id: U64) {
+    pub fn withdraw(&mut self, stream_id: U64) -> Promise {
         // convert id to native u64
         let id: u64 = stream_id.0;
 
@@ -124,6 +124,12 @@ impl Contract {
         assert!(
             env::block_timestamp() > temp_stream.start_time,
             "The stream has not started yet"
+        );
+
+        require!(
+            env::predecessor_account_id() == temp_stream.sender ||
+            env::predecessor_account_id() == temp_stream.receiver, 
+            "You dont have permissions to withdraw"
         );
 
         // Case: sender withdraws excess amount from the stream after it has ended
@@ -152,16 +158,16 @@ impl Contract {
             let remaining_balance = temp_stream.balance - withdrawal_amount;
             assert!(remaining_balance > 0, "Already withdrawn");
 
-            // Transfer tokens to the sender
-            let receiver = temp_stream.sender.clone();
-            Promise::new(receiver).transfer(remaining_balance);
-
             // Update stream and save
             temp_stream.balance -= remaining_balance;
             self.streams.insert(&id, &temp_stream);
 
+            // Transfer tokens to the sender
+            let receiver = temp_stream.sender.clone();
+            Promise::new(receiver).transfer(remaining_balance)
+
         // Case: Receiver can withdraw the amount fromt the stream
-        } else if env::predecessor_account_id() == temp_stream.receiver {
+        } else {
             let time_elapsed: u64;
             let withdraw_time: u64;
 
@@ -190,17 +196,14 @@ impl Contract {
             // Transfer the tokens to the receiver
             let receiver = temp_stream.receiver.clone();
             assert!(withdrawal_amount > 0);
-            Promise::new(receiver).transfer(withdrawal_amount);
 
-            println!("{} {}", temp_stream.balance, withdrawal_amount);
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
             self.streams.insert(&id, &temp_stream);
-        } else {
-            // @todo proper error
-            assert!(false, "You dont have permission to withdraw");
-        }
+
+            Promise::new(receiver).transfer(withdrawal_amount)
+        } 
     }
 
     pub fn pause(&mut self, stream_id: U64) {
@@ -266,7 +269,7 @@ impl Contract {
         log!("Stream resumed: {}", stream.id);
     }
 
-    pub fn cancel(&mut self, stream_id: U64) {
+    pub fn cancel(&mut self, stream_id: U64) -> Promise {
         // convert id to native u64
         let id: u64 = stream_id.0;
 
@@ -301,8 +304,6 @@ impl Contract {
         // Refund the amounts to the sender and the receiver respectively
         let sender = temp_stream.sender.clone();
         let receiver = temp_stream.receiver.clone();
-        Promise::new(sender).transfer(sender_amt);
-        Promise::new(receiver).transfer(receiver_amt);
 
         // Update the stream balance and save
         temp_stream.balance = 0;
@@ -310,6 +311,9 @@ impl Contract {
 
         // Log
         log!("Stream cancelled: {}", temp_stream.id);
+
+        Promise::new(sender).transfer(sender_amt)
+            .then(Promise::new(receiver).transfer(receiver_amt))
     }
 }
 
