@@ -16,9 +16,6 @@ pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
                                                                  // rate is in tokens per nano seconds
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
 
-// @todo
-// pub const NEAR_TOKEN_ID: AccountId ="NEAR".parse().unwrap()
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -41,7 +38,7 @@ pub struct Stream {
     withdraw_time: Timestamp, // last withdraw time
     is_paused: bool,
     paused_time: Timestamp, // last paused time
-    contract_id: AccountId, // address of the token contract, 0 for near??
+    contract_id: AccountId, // "near.near" for NEAR tokens
 }
 
 #[ext_contract(ext_ft_transfer)]
@@ -117,8 +114,6 @@ impl Contract {
 
         // Save the stream
         self.streams.insert(&params_key, &stream_params);
-        // can we allow duplicate stream, can't be because of `current_id`
-        // assert!(existing.is_none(), "Stream with properties already exists");
 
         // Update the global stream count for next stream
         self.current_id += 1;
@@ -134,7 +129,6 @@ impl Contract {
         let mut temp_stream = self.streams.get(&id).unwrap();
 
         require!(temp_stream.balance > 0, "No balance to withdraw");
-        require!(temp_stream.contract_id == "near.near".parse().unwrap());
 
         // assert the stream has started
         require!(
