@@ -199,7 +199,6 @@ impl Contract {
                     temp_stream.withdraw_time < temp_stream.end_time,
                     "Already withdrawn"
                 );
-                println!("{}, {}", temp_stream.end_time, temp_stream.withdraw_time);
                 withdraw_time = env::block_timestamp();
 
                 if temp_stream.is_paused {
