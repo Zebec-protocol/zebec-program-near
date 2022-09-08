@@ -1,28 +1,10 @@
 use crate::*;
-
-// use near_contract_standards::fungible_token::FungibleToken;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 
 use near_sdk::serde_json;
-use near_sdk::{ext_contract, Promise, PromiseOrValue, Timestamp};
+use near_sdk::{ PromiseOrValue, Timestamp};
 
 pub use crate::views::*;
-
-#[ext_contract(ext_ft_transfer)]
-trait NEP141 {
-    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
-}
-
-// @todo handle callbacks
-// pub trait AterCallback {
-//     fn after_withdraw() {
-
-//     }
-
-//     fn after_cancel() {
-
-//     }
-// }
 
 #[near_bindgen]
 impl Contract {
@@ -82,146 +64,6 @@ impl Contract {
         return true;
     }
 
-    // currently only supports only EOA for withdraw
-    // no multisig contract
-    pub fn ft_withdraw(&mut self, stream_id: U64) -> Promise {
-        let id: u64 = stream_id.into();
-
-        // get the stream with id: stream_id
-        let mut temp_stream = self.streams.get(&id).unwrap();
-
-        assert!(temp_stream.contract_id == "NEAR".parse().unwrap());
-
-        // assert the stream has started
-        assert!(
-            env::block_timestamp() > temp_stream.start_time,
-            "The stream has not started yet"
-        );
-
-        // Case: sender withdraws excess amount from the stream after it has ended
-        if env::predecessor_account_id() == temp_stream.sender {
-            assert!(
-                env::block_timestamp() > temp_stream.end_time,
-                "Cannot withdraw before the stream has ended"
-            );
-
-            // Amount that has been streamed to the receiver
-            let withdrawal_amount: u128;
-
-            if temp_stream.is_paused {
-                withdrawal_amount = temp_stream.rate
-                    * u128::from(temp_stream.paused_time - temp_stream.withdraw_time);
-            } else {
-                withdrawal_amount =
-                    temp_stream.rate * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
-            }
-
-            // Calculate the withdrawl amount
-            let remaining_balance = temp_stream.balance - withdrawal_amount;
-
-            // Transfer tokens to the sender
-            let receiver = temp_stream.sender.clone();
-            let contract_id = temp_stream.contract_id.clone();
-            // Update stream and save
-            temp_stream.balance -= remaining_balance;
-            self.streams.insert(&id, &temp_stream);
-
-            // NEP141 : ft_transfer()
-            ext_ft_transfer::ext(contract_id).ft_transfer(receiver, remaining_balance.into(), None)
-
-        // Case: Receiver can withdraw the amount fromt the stream
-        } else if env::predecessor_account_id() == temp_stream.receiver {
-            let time_elapsed: u64;
-            let withdraw_time: u64;
-
-            // Calculate the elapsed time
-            if env::block_timestamp() >= temp_stream.end_time {
-                time_elapsed = temp_stream.end_time - temp_stream.withdraw_time;
-                withdraw_time = env::block_timestamp();
-
-                // this block is not necessary
-                if temp_stream.is_paused {
-                    temp_stream.withdraw_time += temp_stream.end_time - temp_stream.paused_time;
-                }
-            } else if temp_stream.is_paused {
-                time_elapsed = temp_stream.paused_time - temp_stream.withdraw_time;
-                withdraw_time = temp_stream.paused_time;
-            } else {
-                time_elapsed = env::block_timestamp() - temp_stream.withdraw_time;
-                withdraw_time = env::block_timestamp();
-            }
-
-            // Calculate the withdrawal amount
-            let withdrawal_amount = temp_stream.rate * u128::from(time_elapsed);
-            assert!(withdrawal_amount > 0);
-
-            // Transfer the tokens to the receiver
-            let receiver = temp_stream.receiver.clone();
-
-            let contract_id = temp_stream.contract_id.clone();
-
-            // Update the stream struct and save
-            temp_stream.balance -= withdrawal_amount;
-            temp_stream.withdraw_time = withdraw_time;
-            self.streams.insert(&id, &temp_stream);
-
-            ext_ft_transfer::ext(contract_id).ft_transfer(receiver, withdrawal_amount.into(), None)
-            // Promise::new(receiver).transfer(withdrawal_amount);
-        } else {
-            // @todo proper error
-            panic!();
-        }
-    }
-
-    pub fn ft_cancel(&mut self, stream_id: U64) {
-        // convert id to native u64
-        let id: u64 = stream_id.into();
-
-        // Get the stream
-        let mut temp_stream = self.streams.get(&id).unwrap();
-
-        // Only the sender can cancel the stream
-        assert!(env::predecessor_account_id() == temp_stream.sender);
-
-        // Stream can only be cancelled if it has not ended
-        assert!(
-            temp_stream.end_time > env::block_timestamp(),
-            "Stream already ended"
-        );
-
-        // Amounts to refund to the sender and the receiver
-        let sender_amt: u128;
-        let receiver_amt: u128;
-
-        // Calculate the amount to refund to the receiver
-        if temp_stream.is_paused {
-            receiver_amt =
-                u128::from(temp_stream.paused_time - temp_stream.withdraw_time) * temp_stream.rate;
-        } else {
-            receiver_amt =
-                u128::from(env::block_timestamp() - temp_stream.withdraw_time) * temp_stream.rate;
-        }
-
-        // Calculate the amoun to refund to the sender
-        sender_amt = temp_stream.balance - receiver_amt;
-
-        // Refund the amounts to the sender and the receiver respectively
-        let sender = temp_stream.sender.clone();
-        let receiver = temp_stream.receiver.clone();
-
-        // Update the stream balance and save
-        temp_stream.balance = 0;
-        self.streams.insert(&id, &temp_stream);
-
-        // log
-        log!("Stream cancelled: {}", temp_stream.id);
-
-        let contract_id = temp_stream.contract_id;
-
-        ext_ft_transfer::ext(contract_id.clone()).ft_transfer(sender, sender_amt.into(), None);
-        ext_ft_transfer::ext(contract_id.clone()).ft_transfer(receiver, receiver_amt.into(), None);
-    }
-
     pub fn valid_ft_sender(account: AccountId) -> bool {
         // can only be called by stablecoin contract
         // @todo add valid stablecoins (from mainnet) address here later
@@ -235,6 +77,7 @@ impl Contract {
     }
 }
 
+// EOA(msg:stream) -> USDC  -> Zebec
 #[near_bindgen]
 impl FungibleTokenReceiver for Contract {
     fn ft_on_transfer(
