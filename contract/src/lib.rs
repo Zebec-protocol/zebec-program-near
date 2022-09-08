@@ -1,15 +1,20 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::{env, log, near_bindgen, AccountId, Balance, PanicOnDefault, Promise, Timestamp, require};
-use near_sdk::serde::{Serialize, Deserialize};
 use near_sdk::json_types::{U128, U64};
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::{
+    env, ext_contract, log, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise,
+    Timestamp,
+};
+
+mod calls;
+mod views;
 
 pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
 pub const ONE_YOCTO: Balance = 1;
 pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
+                                                                 // rate is in tokens per nano seconds
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
-
-mod views;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -17,7 +22,6 @@ pub struct Contract {
     current_id: u64,
     streams: UnorderedMap<u64, Stream>,
 }
-
 // Define the stream structure
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -34,7 +38,16 @@ pub struct Stream {
     withdraw_time: Timestamp, // last withdraw time
     is_paused: bool,
     paused_time: Timestamp, // last paused time
+    contract_id: AccountId, // "near.testnet" for NEAR tokens(@todo change later)
 }
+
+#[ext_contract(ext_ft_transfer)]
+trait NEP141 {
+    fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
+}
+
+// @todo handle callbacks
+// pub trait AterCallback {
 
 #[near_bindgen]
 impl Contract {
@@ -82,6 +95,7 @@ impl Contract {
         );
 
         let params_key = self.current_id;
+        let near_token_id:AccountId = "near.testnet".parse().unwrap();
 
         let stream_params = Stream {
             id: params_key,
@@ -95,6 +109,7 @@ impl Contract {
             end_time,
             withdraw_time: start_time,
             paused_time: start_time,
+            contract_id: near_token_id,
         };
 
         // Save the stream
@@ -113,10 +128,7 @@ impl Contract {
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
 
-        require!(
-            temp_stream.balance > 0,
-            "No balance to withdraw"
-        );
+        require!(temp_stream.balance > 0, "No balance to withdraw");
 
         // assert the stream has started
         require!(
@@ -125,8 +137,8 @@ impl Contract {
         );
 
         require!(
-            env::predecessor_account_id() == temp_stream.sender ||
-            env::predecessor_account_id() == temp_stream.receiver, 
+            env::predecessor_account_id() == temp_stream.sender
+                || env::predecessor_account_id() == temp_stream.receiver,
             "You dont have permissions to withdraw"
         );
 
@@ -144,9 +156,10 @@ impl Contract {
                 withdrawal_amount = temp_stream.rate
                     * u128::from(temp_stream.paused_time - temp_stream.withdraw_time);
             } else {
-                if temp_stream.end_time > temp_stream.withdraw_time { // receiver has not withdrawn after stream ended
-                    withdrawal_amount =
-                    temp_stream.rate * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
+                if temp_stream.end_time > temp_stream.withdraw_time {
+                    // receiver has not withdrawn after stream ended
+                    withdrawal_amount = temp_stream.rate
+                        * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
                 } else {
                     withdrawal_amount = 0;
                 }
@@ -159,10 +172,21 @@ impl Contract {
             // Update stream and save
             temp_stream.balance -= remaining_balance;
             self.streams.insert(&id, &temp_stream);
-
             // Transfer tokens to the sender
             let receiver = temp_stream.sender.clone();
-            Promise::new(receiver).transfer(remaining_balance)
+
+            
+
+            if temp_stream.contract_id == "near.testnet".parse().unwrap() {
+                Promise::new(receiver).transfer(remaining_balance)
+            } else {
+                // NEP141 : ft_transfer()
+                ext_ft_transfer::ext(temp_stream.contract_id).ft_transfer(
+                    receiver,
+                    remaining_balance.into(),
+                    None,
+                )
+            }
 
         // Case: Receiver can withdraw the amount fromt the stream
         } else {
@@ -171,7 +195,10 @@ impl Contract {
 
             // Calculate the elapsed time
             if env::block_timestamp() >= temp_stream.end_time {
-                require!(temp_stream.withdraw_time < temp_stream.end_time, "Already withdrawn");
+                require!(
+                    temp_stream.withdraw_time < temp_stream.end_time,
+                    "Already withdrawn"
+                );
                 println!("{}, {}", temp_stream.end_time, temp_stream.withdraw_time);
                 withdraw_time = env::block_timestamp();
 
@@ -200,8 +227,17 @@ impl Contract {
             temp_stream.withdraw_time = withdraw_time;
             self.streams.insert(&id, &temp_stream);
 
-            Promise::new(receiver).transfer(withdrawal_amount)
-        } 
+            if temp_stream.contract_id == "near.testnet".parse().unwrap() {
+                Promise::new(receiver).transfer(withdrawal_amount)
+            } else {
+                // NEP141 : ft_transfer()
+                ext_ft_transfer::ext(temp_stream.contract_id).ft_transfer(
+                    receiver,
+                    withdrawal_amount.into(),
+                    None,
+                )
+            }
+        }
     }
 
     pub fn pause(&mut self, stream_id: U64) {
@@ -307,11 +343,24 @@ impl Contract {
         temp_stream.balance = 0;
         self.streams.insert(&id, &temp_stream);
 
-        // Log
+        // log
         log!("Stream cancelled: {}", temp_stream.id);
 
-        Promise::new(sender).transfer(sender_amt)
-            .then(Promise::new(receiver).transfer(receiver_amt))
+        if temp_stream.contract_id == "near.testnet".parse().unwrap() {
+            Promise::new(sender)
+                .transfer(sender_amt)
+                .and(Promise::new(receiver).transfer(receiver_amt))
+        } else {
+            ext_ft_transfer::ext(temp_stream.contract_id.clone())
+                .ft_transfer(sender, sender_amt.into(), None)
+                .and(
+                    ext_ft_transfer::ext(temp_stream.contract_id.clone()).ft_transfer(
+                        receiver,
+                        receiver_amt.into(),
+                        None,
+                    ),
+                )
+        }
     }
 }
 
@@ -604,7 +653,6 @@ mod tests {
         assert_eq!(internal_balance, 8 * NEAR);
     }
 
-
     #[test]
     fn test_sender_withdraws_before_sender() {
         // 1. create_stream contract
@@ -642,7 +690,7 @@ mod tests {
         // 3. receiver call withdraw
         set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 25);
         contract.withdraw(stream_id);
-        
+
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);
@@ -685,7 +733,7 @@ mod tests {
         // 3. receiver call withdraw
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 25);
         contract.withdraw(stream_id);
-        
+
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);

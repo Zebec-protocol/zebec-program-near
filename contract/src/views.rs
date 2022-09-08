@@ -1,9 +1,18 @@
-use near_sdk::{near_bindgen};
-
+use near_sdk::{near_bindgen, AccountId, Balance};
 use crate::*;
 
-// the `stream` structure is not json serialized 
-// we need to convert it into json @todo
+// mainly for `ft_on_transfer`
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct StreamView {
+    pub id: u64,
+    pub receiver: AccountId,
+    pub balance: Balance,
+    pub rate: U128,
+    pub created: Timestamp,
+    pub start_time: Timestamp,
+    pub end_time: Timestamp,
+}
 
 #[near_bindgen]
 impl Contract {
