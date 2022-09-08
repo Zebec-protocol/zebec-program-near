@@ -13,12 +13,11 @@ mod views;
 pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
 pub const ONE_YOCTO: Balance = 1;
 pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
-                                                                 // tokens per nano seconds
+                                                                 // rate is in tokens per nano seconds
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
 
 // @todo
 // pub const NEAR_TOKEN_ID: AccountId ="NEAR".parse().unwrap()
-
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -99,7 +98,7 @@ impl Contract {
         );
 
         let params_key = self.current_id;
-        let near_token_id: AccountId = "near.near".parse().unwrap(); // @todo
+        let near_token_id: AccountId = "near.near".parse().unwrap();
 
         let stream_params = Stream {
             id: params_key,
@@ -113,7 +112,7 @@ impl Contract {
             end_time,
             withdraw_time: start_time,
             paused_time: start_time,
-            contract_id: "near.near".parse().unwrap(),
+            contract_id: near_token_id,
         };
 
         // Save the stream
@@ -232,7 +231,16 @@ impl Contract {
             temp_stream.withdraw_time = withdraw_time;
             self.streams.insert(&id, &temp_stream);
 
-            Promise::new(receiver).transfer(withdrawal_amount)
+            if temp_stream.contract_id == "near.near".parse().unwrap() {
+                Promise::new(receiver).transfer(withdrawal_amount)
+            } else {
+                // NEP141 : ft_transfer()
+                ext_ft_transfer::ext(temp_stream.contract_id).ft_transfer(
+                    receiver,
+                    withdrawal_amount.into(),
+                    None,
+                )
+            }
         }
     }
 
@@ -345,11 +353,11 @@ impl Contract {
         if temp_stream.contract_id == "near.near".parse().unwrap() {
             Promise::new(sender)
                 .transfer(sender_amt)
-                .then(Promise::new(receiver).transfer(receiver_amt))
+                .and(Promise::new(receiver).transfer(receiver_amt))
         } else {
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
                 .ft_transfer(sender, sender_amt.into(), None)
-                .then(
+                .and(
                     ext_ft_transfer::ext(temp_stream.contract_id.clone()).ft_transfer(
                         receiver,
                         receiver_amt.into(),
@@ -357,7 +365,6 @@ impl Contract {
                     ),
                 )
         }
-
     }
 }
 

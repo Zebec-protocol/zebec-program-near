@@ -77,7 +77,6 @@ impl Contract {
     }
 }
 
-// EOA(msg:stream) -> USDC  -> Zebec
 #[near_bindgen]
 impl FungibleTokenReceiver for Contract {
     fn ft_on_transfer(
@@ -91,10 +90,9 @@ impl FungibleTokenReceiver for Contract {
         let key: Result<StreamView, _> = serde_json::from_str(&msg);
         if key.is_err() {
             // if err then return everything back
-            // @todo
             return PromiseOrValue::Value(amount);
         }
-        let _stream = key.unwrap(); // stream struct sent from via stablecoin in msg:String
+        let _stream = key.unwrap();
         if self.ft_create_stream(
             _stream.rate,
             _stream.start_time,
@@ -108,41 +106,5 @@ impl FungibleTokenReceiver for Contract {
         } else {
             return PromiseOrValue::Value(amount);
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use near_sdk::test_utils::accounts;
-    use near_sdk::test_utils::VMContextBuilder;
-    use near_sdk::testing_env;
-
-    const NEAR: u128 = 1000000000000000000000000;
-
-    #[test]
-    fn initializes() {
-        let contract = Contract::new();
-        assert_eq!(contract.current_id, 1);
-        assert_eq!(contract.streams.len(), 0);
-    }
-    fn set_context_with_balance(predecessor: AccountId, amount: Balance) {
-        let mut builder = VMContextBuilder::new();
-        builder.predecessor_account_id(predecessor);
-        builder.attached_deposit(amount);
-        testing_env!(builder.build());
-    }
-
-    fn set_context_with_balance_timestamp(predecessor: AccountId, amount: Balance, ts: u64) {
-        let mut builder = VMContextBuilder::new();
-        builder.predecessor_account_id(predecessor);
-        builder.attached_deposit(amount);
-        builder.block_timestamp(ts);
-        testing_env!(builder.build());
-    }
-
-    fn test_ft_create_stream() {
-        let user = "alice.near".parse().unwrap();
-        set_context_with_balance(user, 100);
     }
 }

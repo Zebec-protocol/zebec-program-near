@@ -15,7 +15,6 @@ pub struct StreamView {
 }
 
 #[near_bindgen]
-// #[serde(crate = "near_sdk::serde")]
 impl Contract {
     pub fn get_stream(&self, stream_id: U64) -> Stream {
         let id: u64 = stream_id.into();
