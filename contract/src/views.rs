@@ -1,4 +1,4 @@
-use near_sdk::{env, log, near_bindgen, AccountId, Balance, Promise, serde};
+use near_sdk::{near_bindgen, AccountId, Balance};
 use crate::*;
 
 // mainly for `ft_on_transfer`

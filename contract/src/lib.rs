@@ -16,14 +16,12 @@ pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR /
 // @todo
 // pub const NEAR_TOKEN_ID: AccountId ="NEAR".parse().unwrap()
 
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     current_id: u64,
     streams: UnorderedMap<u64, Stream>,
 }
-
 // Define the stream structure
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
@@ -40,7 +38,7 @@ pub struct Stream {
     withdraw_time: Timestamp, // last withdraw time
     is_paused: bool,
     paused_time: Timestamp, // last paused time
-    contract_id: AccountId,// address of the token contract, 0 for near??
+    contract_id: AccountId, // address of the token contract, 0 for near??
 }
 
 #[near_bindgen]
@@ -89,6 +87,7 @@ impl Contract {
         );
 
         let params_key = self.current_id;
+        let near_token_id: AccountId = "near.near".parse().unwrap(); // @todo
 
         let stream_params = Stream {
             id: params_key,
@@ -105,19 +104,16 @@ impl Contract {
             contract_id: "near.near".parse().unwrap()
         };
 
-
         // Save the stream
         self.streams.insert(&params_key, &stream_params);
         // can we allow duplicate stream, can't be because of `current_id`
         // assert!(existing.is_none(), "Stream with properties already exists");
 
-
         // Update the global stream count for next stream
         self.current_id += 1;
 
         log!("Saving streams {}", stream_params.id);
-            }
-    
+    }
 
     pub fn withdraw(&mut self, stream_id: U64) -> Promise {
         // convert id to native u64
@@ -130,7 +126,7 @@ impl Contract {
             temp_stream.balance > 0,
             "No balance to withdraw"
         );
-        assert!(temp_stream.contract_id == "near.near".parse().unwrap());
+        require!(temp_stream.contract_id == "near.near".parse().unwrap());
 
         // assert the stream has started
         require!(
@@ -158,9 +154,10 @@ impl Contract {
                 withdrawal_amount = temp_stream.rate
                     * u128::from(temp_stream.paused_time - temp_stream.withdraw_time);
             } else {
-                if temp_stream.end_time > temp_stream.withdraw_time { // receiver has not withdrawn after stream ended
-                    withdrawal_amount =
-                    temp_stream.rate * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
+                if temp_stream.end_time > temp_stream.withdraw_time {
+                    // receiver has not withdrawn after stream ended
+                    withdrawal_amount = temp_stream.rate
+                        * u128::from(temp_stream.end_time - temp_stream.withdraw_time);
                 } else {
                     withdrawal_amount = 0;
                 }
@@ -617,7 +614,6 @@ mod tests {
         assert_eq!(internal_balance, 8 * NEAR);
     }
 
-
     #[test]
     fn test_sender_withdraws_before_sender() {
         // 1. create_stream contract
@@ -655,7 +651,7 @@ mod tests {
         // 3. receiver call withdraw
         set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 25);
         contract.withdraw(stream_id);
-        
+
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);
@@ -698,7 +694,7 @@ mod tests {
         // 3. receiver call withdraw
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 25);
         contract.withdraw(stream_id);
-        
+
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);
