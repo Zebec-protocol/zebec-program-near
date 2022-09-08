@@ -38,7 +38,7 @@ pub struct Stream {
     withdraw_time: Timestamp, // last withdraw time
     is_paused: bool,
     paused_time: Timestamp, // last paused time
-    contract_id: AccountId, // "near.near" for NEAR tokens
+    contract_id: AccountId, // "near.testnet" for NEAR tokens(@todo change later)
 }
 
 #[ext_contract(ext_ft_transfer)]
@@ -95,7 +95,7 @@ impl Contract {
         );
 
         let params_key = self.current_id;
-        let near_token_id: AccountId = "near.near".parse().unwrap();
+        let near_token_id:AccountId = "near.testnet".parse().unwrap();
 
         let stream_params = Stream {
             id: params_key,
@@ -175,7 +175,9 @@ impl Contract {
             // Transfer tokens to the sender
             let receiver = temp_stream.sender.clone();
 
-            if temp_stream.contract_id == "near.near".parse().unwrap() {
+            
+
+            if temp_stream.contract_id == "near.testnet".parse().unwrap() {
                 Promise::new(receiver).transfer(remaining_balance)
             } else {
                 // NEP141 : ft_transfer()
@@ -225,7 +227,7 @@ impl Contract {
             temp_stream.withdraw_time = withdraw_time;
             self.streams.insert(&id, &temp_stream);
 
-            if temp_stream.contract_id == "near.near".parse().unwrap() {
+            if temp_stream.contract_id == "near.testnet".parse().unwrap() {
                 Promise::new(receiver).transfer(withdrawal_amount)
             } else {
                 // NEP141 : ft_transfer()
@@ -344,7 +346,7 @@ impl Contract {
         // log
         log!("Stream cancelled: {}", temp_stream.id);
 
-        if temp_stream.contract_id == "near.near".parse().unwrap() {
+        if temp_stream.contract_id == "near.testnet".parse().unwrap() {
             Promise::new(sender)
                 .transfer(sender_amt)
                 .and(Promise::new(receiver).transfer(receiver_amt))
