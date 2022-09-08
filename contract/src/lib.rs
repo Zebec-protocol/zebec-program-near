@@ -40,7 +40,7 @@ pub struct Stream {
 impl Contract {
     #[init]
     pub fn new() -> Self {
-        assert!(!env::state_exists(), "Already initialized");
+        require!(!env::state_exists(), "Already initialized");
         Self {
             current_id: 1,
             streams: UnorderedMap::new(b"p"),
@@ -55,30 +55,28 @@ impl Contract {
         let end_time: u64 = end.0;
 
         // Check the start and end timestamp is valid
-        assert!(
+        require!(
             start_time >= env::block_timestamp(),
             "Start time cannot be in the past"
         );
-        assert!(end_time >= start_time, "Start time cannot be in the past");
+        require!(end_time >= start_time, "Start time cannot be in the past");
 
         // check the rate is valid
-        assert!(rate > 0, "Rate cannot be zero");
-        assert!(rate < MAX_RATE, "Rate is too high");
+        require!(rate > 0, "Rate cannot be zero");
+        require!(rate < MAX_RATE, "Rate is too high");
 
         // calculate the balance is enough
         let stream_duration = end_time - start_time;
         let stream_amount = u128::from(stream_duration) * rate;
 
         // check the amount send to the stream
-        assert!(
+        require!(
             env::attached_deposit() == stream_amount,
-            "The amount provided doesn't matches the stream {} {}",
-            env::attached_deposit(),
-            stream_amount
+            "The amount provided doesn't matches the stream"
         );
 
         // check that the receiver and sender are not the same
-        assert!(
+        require!(
             env::predecessor_account_id() != receiver,
             "Sender and receiver cannot be the same"
         );
@@ -115,13 +113,13 @@ impl Contract {
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
 
-        assert!(
+        require!(
             temp_stream.balance > 0,
             "No balance to withdraw"
         );
 
         // assert the stream has started
-        assert!(
+        require!(
             env::block_timestamp() > temp_stream.start_time,
             "The stream has not started yet"
         );
@@ -134,7 +132,7 @@ impl Contract {
 
         // Case: sender withdraws excess amount from the stream after it has ended
         if env::predecessor_account_id() == temp_stream.sender {
-            assert!(
+            require!(
                 env::block_timestamp() > temp_stream.end_time,
                 "Cannot withdraw before the stream has ended"
             );
@@ -156,7 +154,7 @@ impl Contract {
 
             // Calculate the withdrawl amount
             let remaining_balance = temp_stream.balance - withdrawal_amount;
-            assert!(remaining_balance > 0, "Already withdrawn");
+            require!(remaining_balance > 0, "Already withdrawn");
 
             // Update stream and save
             temp_stream.balance -= remaining_balance;
@@ -173,7 +171,7 @@ impl Contract {
 
             // Calculate the elapsed time
             if env::block_timestamp() >= temp_stream.end_time {
-                assert!(temp_stream.withdraw_time < temp_stream.end_time, "Already withdrawn");
+                require!(temp_stream.withdraw_time < temp_stream.end_time, "Already withdrawn");
                 println!("{}, {}", temp_stream.end_time, temp_stream.withdraw_time);
                 withdraw_time = env::block_timestamp();
 
@@ -195,7 +193,7 @@ impl Contract {
 
             // Transfer the tokens to the receiver
             let receiver = temp_stream.receiver.clone();
-            assert!(withdrawal_amount > 0);
+            require!(withdrawal_amount > 0);
 
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
@@ -214,18 +212,18 @@ impl Contract {
         let mut stream = self.streams.get(&id).unwrap();
 
         // Only the sender can pause the stream
-        assert!(env::predecessor_account_id() == stream.sender);
+        require!(env::predecessor_account_id() == stream.sender);
 
         // Can only be paused after the stream has started and before it has ended
         let can_pause =
             env::block_timestamp() > stream.start_time && env::block_timestamp() < stream.end_time;
-        assert!(
+        require!(
             can_pause,
             "Can only be pause after stream starts and before it has ended"
         );
 
         // assert that the stream is already paused
-        assert!(!stream.is_paused, "Cannot pause already paused stream");
+        require!(!stream.is_paused, "Cannot pause already paused stream");
 
         // update the stream state
         stream.is_paused = true;
@@ -244,11 +242,11 @@ impl Contract {
         let mut stream = self.streams.get(&id).unwrap();
 
         // Only the sender can resume the stream
-        assert!(env::predecessor_account_id() == stream.sender);
+        require!(env::predecessor_account_id() == stream.sender);
 
         // assert that the stream is already paused
         let is_paused = self.streams.get(&id).unwrap().is_paused;
-        assert!(is_paused, "Cannot resume unpaused stream");
+        require!(is_paused, "Cannot resume unpaused stream");
 
         // resume the stream
         stream.is_paused = false;
@@ -277,10 +275,10 @@ impl Contract {
         let mut temp_stream = self.streams.get(&id).unwrap();
 
         // Only the sender can cancel the stream
-        assert!(env::predecessor_account_id() == temp_stream.sender);
+        require!(env::predecessor_account_id() == temp_stream.sender);
 
         // Stream can only be cancelled if it has not ended
-        assert!(
+        require!(
             temp_stream.end_time > env::block_timestamp(),
             "Stream already ended"
         );
@@ -366,7 +364,7 @@ mod tests {
         assert_eq!(contract.current_id, 2);
         let params_key = 1;
         let stream = contract.streams.get(&params_key).unwrap();
-        assert!(!stream.is_paused);
+        require!(!stream.is_paused);
         assert_eq!(stream.id, 1);
         assert_eq!(stream.sender, sender.clone());
         assert_eq!(stream.receiver, accounts(1));
@@ -403,7 +401,7 @@ mod tests {
         // Check the contract balance after stream is created
         set_context_with_balance_timestamp(env::current_account_id(), 10 * NEAR, start_time.0);
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
-        assert!(internal_balance == 10 * NEAR);
+        require!(internal_balance == 10 * NEAR);
 
         // 3. call withdraw (action)
         let stream_start_time: u64 = start_time.0;
@@ -836,7 +834,7 @@ mod tests {
         contract.pause(stream_id);
 
         // 4. assert
-        assert!(contract.streams.get(&stream_id.0).unwrap().is_paused);
+        require!(contract.streams.get(&stream_id.0).unwrap().is_paused);
     }
 
     #[test]
@@ -888,7 +886,7 @@ mod tests {
 
         // 4. assert
         let stream = contract.streams.get(&stream_id.0).unwrap();
-        assert!(!stream.is_paused);
+        require!(!stream.is_paused);
         assert_eq!(stream.withdraw_time, start + 3);
     }
 
