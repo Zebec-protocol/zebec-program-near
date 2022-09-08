@@ -102,17 +102,22 @@ impl Contract {
             end_time,
             withdraw_time: start_time,
             paused_time: start_time,
-            contract_id: "NEAR".parse().unwrap()
+            contract_id: "near.near".parse().unwrap()
         };
+
 
         // Save the stream
         self.streams.insert(&params_key, &stream_params);
+        // can we allow duplicate stream, can't be because of `current_id`
+        // assert!(existing.is_none(), "Stream with properties already exists");
+
 
         // Update the global stream count for next stream
         self.current_id += 1;
 
         log!("Saving streams {}", stream_params.id);
-    }
+            }
+    
 
     pub fn withdraw(&mut self, stream_id: U64) -> Promise {
         // convert id to native u64
@@ -125,7 +130,7 @@ impl Contract {
             temp_stream.balance > 0,
             "No balance to withdraw"
         );
-        assert!(temp_stream.contract_id == "NEAR".parse().unwrap());
+        assert!(temp_stream.contract_id == "near.near".parse().unwrap());
 
         // assert the stream has started
         require!(
@@ -168,7 +173,6 @@ impl Contract {
             // Update stream and save
             temp_stream.balance -= remaining_balance;
             self.streams.insert(&id, &temp_stream);
-
             // Transfer tokens to the sender
             let receiver = temp_stream.sender.clone();
             Promise::new(receiver).transfer(remaining_balance)
@@ -316,7 +320,7 @@ impl Contract {
         temp_stream.balance = 0;
         self.streams.insert(&id, &temp_stream);
 
-        // Log
+        // log
         log!("Stream cancelled: {}", temp_stream.id);
 
         Promise::new(sender).transfer(sender_amt)

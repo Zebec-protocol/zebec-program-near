@@ -13,7 +13,6 @@ trait NEP141 {
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
-
 // @todo handle callbacks
 // pub trait AterCallback {
 //     fn after_withdraw() {
@@ -21,7 +20,7 @@ trait NEP141 {
 //     }
 
 //     fn after_cancel() {
-        
+
 //     }
 // }
 
@@ -84,12 +83,8 @@ impl Contract {
     }
 
     // currently only supports only EOA for withdraw
-    // @todo think what if the receiver is a contract
-    pub fn ft_withdraw(&mut self, stream_id: U64) -> Promise{
-        // returns FT tokens instead of NEAR
-
-        // USN decimals() : 18
-
+    // no multisig contract
+    pub fn ft_withdraw(&mut self, stream_id: U64) -> Promise {
         let id: u64 = stream_id.into();
 
         // get the stream with id: stream_id
@@ -162,7 +157,7 @@ impl Contract {
 
             // Transfer the tokens to the receiver
             let receiver = temp_stream.receiver.clone();
-        
+
             let contract_id = temp_stream.contract_id.clone();
 
             // Update the stream struct and save
@@ -178,8 +173,7 @@ impl Contract {
         }
     }
 
-
-    pub fn ft_cancel(&mut self, stream_id: U64){
+    pub fn ft_cancel(&mut self, stream_id: U64) {
         // convert id to native u64
         let id: u64 = stream_id.into();
 
@@ -214,7 +208,6 @@ impl Contract {
         // Refund the amounts to the sender and the receiver respectively
         let sender = temp_stream.sender.clone();
         let receiver = temp_stream.receiver.clone();
-        
 
         // Update the stream balance and save
         temp_stream.balance = 0;
@@ -275,8 +268,6 @@ impl FungibleTokenReceiver for Contract {
     }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -286,7 +277,6 @@ mod tests {
 
     const NEAR: u128 = 1000000000000000000000000;
 
-   
     #[test]
     fn initializes() {
         let contract = Contract::new();
@@ -308,4 +298,8 @@ mod tests {
         testing_env!(builder.build());
     }
 
+    fn test_ft_create_stream() {
+        let user = "alice.near".parse().unwrap();
+        set_context_with_balance(user, 100);
+    }
 }
