@@ -118,7 +118,7 @@ impl Contract {
             start_time,
             end_time,
             withdraw_time: start_time,
-            paused_time: start_time,
+            paused_time: 0,
             contract_id: near_token_id,
             can_cancel,
             can_update,
@@ -174,6 +174,7 @@ impl Contract {
         require!(rate < MAX_RATE, "Rate is too high");
 
         stream.start_time = start_time;
+        stream.withdraw_time = start_time;
         stream.end_time = end_time;
         stream.rate = rate;
 
@@ -1056,6 +1057,104 @@ mod tests {
         // 3. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot update: stream already started")]
+    fn test_update_after_stream_start() {
+        // 1. Create the contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start + 10);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        set_context_with_balance(sender.clone(), 10 * NEAR);
+
+        // 2. create stream and cancel
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, false, true);
+        let stream_id = U64::from(1);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, start + 11);
+
+        contract.update(
+            stream_id,
+            Option::Some(U64::from(start + 12)),
+            Option::Some(U64::from(start + 14)),
+            Option::Some(U128::from(2 * NEAR)),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "The amount provided is not enough for the stream")]
+    fn test_update_stream_insufficient_balance_1() {
+        // 1. Create the contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start + 10);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        set_context_with_balance(sender.clone(), 10 * NEAR);
+
+        // 2. create stream and cancel
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, false, true);
+        let stream_id = U64::from(1);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, start + 1);
+
+        contract.update(
+            stream_id,
+            Option::Some(U64::from(start + 12)),
+            Option::Some(U64::from(start + 14)),
+            Option::Some(U128::from(70 * NEAR)), // Rate = 70 NEAR with balance of just 10 Near (should fail)
+        );
+    }
+
+    #[test]
+    fn test_update_stream() {
+        // 1. Create the contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start + 10);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        set_context_with_balance(sender.clone(), 10 * NEAR);
+
+        // 2. create stream and cancel
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, false, true);
+        let stream_id = U64::from(1);
+
+        set_context_with_balance_timestamp(sender.clone(), 10 * NEAR, start + 1);
+
+        contract.update(
+            stream_id,
+            Option::Some(U64::from(start + 12)),
+            Option::Some(U64::from(start + 14)),
+            Option::Some(U128::from(10 * NEAR)),
+        );
+
+        let params_key = 1;
+        let stream = contract.streams.get(&params_key).unwrap();
+        assert!(!stream.is_paused);
+        assert_eq!(stream.id, 1);
+        assert_eq!(stream.sender, sender.clone());
+        assert_eq!(stream.receiver, accounts(1));
+        assert_eq!(stream.balance, 20 * NEAR);
+        assert_eq!(stream.rate, 10 * NEAR);
+        assert_eq!(stream.start_time, start+12);
+        assert_eq!(stream.end_time, start+14);
+        assert_eq!(stream.withdraw_time, start+12);
+        assert_eq!(stream.paused_time, 0);
+        assert_eq!(stream.can_update, true);
+        assert_eq!(stream.can_cancel, false);
     }
 
     // fn set_context(predecessor: AccountId) {
