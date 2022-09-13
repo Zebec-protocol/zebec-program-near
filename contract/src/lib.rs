@@ -61,7 +61,7 @@ impl Contract {
     }
 
     #[payable]
-    pub fn create_stream(&mut self, receiver: AccountId, stream_rate: U128, start: U64, end: U64) {
+    pub fn create_stream(&mut self, receiver: AccountId, stream_rate: U128, start: U64, end: U64) -> U64 {
         // convert id to native u128
         let rate: u128 = stream_rate.0;
         let start_time: u64 = start.0;
@@ -119,6 +119,8 @@ impl Contract {
         self.current_id += 1;
 
         log!("Saving streams {}", stream_params.id);
+
+        U64::from(params_key)
     }
 
     pub fn withdraw(&mut self, stream_id: U64) -> Promise {
