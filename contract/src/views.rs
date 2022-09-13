@@ -21,12 +21,30 @@ impl Contract {
         self.streams.get(&id).unwrap()
     }
 
-    // for testing only
-    pub fn get_streams(&self) -> Vec<Stream> {
-        let mut res: Vec<Stream> = [].to_vec();
-        for i in 0..self.streams.len() {
-            res.push(self.streams.get(&i).unwrap());
-        }
-        return res;
+    pub fn get_streams(&self, from_index: Option<U128>, limit: Option<U64>) -> Vec<Stream> {
+        let start = u128::from(from_index.unwrap_or(U128(0)));
+
+        self.streams
+            .keys()
+            // skip to start
+            .skip(start as usize)
+            // take the first `limit` elements in the vec
+            .take(limit.unwrap_or(U64(50)).0 as usize)
+            .map(|id| self.streams.get(&id).unwrap())
+            .collect()
+    }
+
+    pub fn get_streams_by_user(&self, user_id: AccountId, from_index: Option<U128>, limit: Option<U64>) -> Vec<Stream> {
+        let start = u128::from(from_index.unwrap_or(U128(0)));
+
+        self.streams
+            .keys()
+            // skip to start
+            .skip(start as usize)
+            // take the first `limit` elements in the vec
+            .take(limit.unwrap_or(U64(50)).0 as usize)
+            .map(|id| self.streams.get(&id).unwrap())
+            .filter(|stream| stream.sender == user_id)
+            .collect()
     }
 }
