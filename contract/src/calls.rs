@@ -1,8 +1,6 @@
 use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
-
-use near_sdk::serde_json;
-use near_sdk::{PromiseOrValue, Timestamp};
+use near_sdk::{PromiseOrValue, Timestamp, serde_json};
 
 pub use crate::views::*;
 
@@ -71,8 +69,11 @@ impl Contract {
     pub fn valid_ft_sender(account: AccountId) -> bool {
         // can only be called by stablecoin contract
         // @todo add valid stablecoins (from mainnet) address here later
-        // pub const accounts: [AccountId; 1] = ["usdn.testnet".parse().unwrap()];
-        if account == "usdn.testnet".parse().unwrap() {
+        let accounts: [AccountId; 2] = [
+            "usdn.testnet".parse().unwrap(),
+            "wrap.testnet".parse().unwrap(),
+        ];
+        if accounts.contains(&account) {
             // @todo: check if the accountID is in explicit (".near") or implicit format
             return true;
         } else {
@@ -91,16 +92,19 @@ impl FungibleTokenReceiver for Contract {
     ) -> PromiseOrValue<U128> {
         assert!(Self::valid_ft_sender(env::predecessor_account_id()));
         // msg contains the structure of the stream
-        let key: Result<StreamView, _> = serde_json::from_str(&msg);
-        if key.is_err() {
+        let res: Result<StreamView, _> = serde_json::from_str(&msg);
+        // log!("stream_input: {:?}", res);
+        if res.is_err() {
             // if err then return everything back
             return PromiseOrValue::Value(amount);
         }
-        let _stream = key.unwrap();
+        let _stream = res.unwrap();
+        // _stream.method_name = "create_stream".to_string();
+        require!(_stream.method_name == "create_stream".to_string());
         if self.ft_create_stream(
-            _stream.rate,
-            _stream.start_time,
-            _stream.end_time,
+            _stream.stream_rate,
+            _stream.start.into(),
+            _stream.end.into(),
             sender_id, // EOA
             amount,
             _stream.receiver,
