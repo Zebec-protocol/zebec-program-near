@@ -2,7 +2,7 @@ use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 
 use near_sdk::serde_json;
-use near_sdk::{ PromiseOrValue, Timestamp};
+use near_sdk::{PromiseOrValue, Timestamp};
 
 pub use crate::views::*;
 
@@ -18,6 +18,8 @@ impl Contract {
         amount: U128,
         receiver: AccountId,
         contract_id: AccountId,
+        can_cancel: bool,
+        can_update: bool,
     ) -> bool {
         // check that the receiver and sender are not the same
         assert!(sender != receiver, "Sender and receiver cannot be the same");
@@ -45,7 +47,7 @@ impl Contract {
 
         let stream_params = Stream {
             id: params_key,
-            sender: sender,
+            sender,
             receiver,
             rate,
             is_paused: false,
@@ -55,7 +57,9 @@ impl Contract {
             end_time,
             withdraw_time: start_time,
             paused_time: start_time,
-            contract_id: contract_id,
+            contract_id,
+            can_cancel,
+            can_update,
         };
 
         self.streams.insert(&params_key, &stream_params);
@@ -101,6 +105,8 @@ impl FungibleTokenReceiver for Contract {
             amount,
             _stream.receiver,
             env::predecessor_account_id(),
+            false,
+            false,
         ) {
             return PromiseOrValue::Value(U128::from(0));
         } else {
