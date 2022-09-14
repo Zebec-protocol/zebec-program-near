@@ -77,9 +77,10 @@ impl Contract {
         let start_time: u64 = start.0;
         let end_time: u64 = end.0;
 
+        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         // Check the start and end timestamp is valid
         require!(
-            start_time >= env::block_timestamp(),
+            start_time >= current_timestamp,
             "Start time cannot be in the past"
         );
         require!(end_time >= start_time, "Start time cannot be in the past");
@@ -114,7 +115,7 @@ impl Contract {
             rate,
             is_paused: false,
             balance: env::attached_deposit(),
-            created: env::block_timestamp(),
+            created: current_timestamp,
             start_time,
             end_time,
             withdraw_time: start_time,
@@ -144,6 +145,7 @@ impl Contract {
     ) {
         // convert to native u64
         let id: u64 = stream_id.0;
+        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
 
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
@@ -159,7 +161,7 @@ impl Contract {
 
         // Check the start and end timestamp is valid
         require!(
-            stream.start_time > env::block_timestamp(),
+            stream.start_time > current_timestamp,
             "Cannot update: stream already started"
         );
         require!(
@@ -169,7 +171,7 @@ impl Contract {
 
         if start_time != stream.start_time {
             require!(
-                start_time >= env::block_timestamp(),
+                start_time >= current_timestamp,
                 "Start time cannot be in the past"
             );
         }
@@ -204,6 +206,8 @@ impl Contract {
         // convert id to native u64
         let id: u64 = stream_id.0;
 
+        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
+
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
 
@@ -211,7 +215,7 @@ impl Contract {
 
         // assert the stream has started
         require!(
-            env::block_timestamp() > temp_stream.start_time,
+            current_timestamp > temp_stream.start_time,
             "The stream has not started yet"
         );
 
@@ -224,7 +228,7 @@ impl Contract {
         // Case: sender withdraws excess amount from the stream after it has ended
         if env::predecessor_account_id() == temp_stream.sender {
             require!(
-                env::block_timestamp() > temp_stream.end_time,
+                current_timestamp > temp_stream.end_time,
                 "Cannot withdraw before the stream has ended"
             );
 
@@ -271,12 +275,12 @@ impl Contract {
             let withdraw_time: u64;
 
             // Calculate the elapsed time
-            if env::block_timestamp() >= temp_stream.end_time {
+            if current_timestamp >= temp_stream.end_time {
                 require!(
                     temp_stream.withdraw_time < temp_stream.end_time,
                     "Already withdrawn"
                 );
-                withdraw_time = env::block_timestamp();
+                withdraw_time = current_timestamp;
 
                 if temp_stream.is_paused {
                     time_elapsed = temp_stream.paused_time - temp_stream.withdraw_time;
@@ -287,8 +291,8 @@ impl Contract {
                 time_elapsed = temp_stream.paused_time - temp_stream.withdraw_time;
                 withdraw_time = temp_stream.paused_time;
             } else {
-                time_elapsed = env::block_timestamp() - temp_stream.withdraw_time;
-                withdraw_time = env::block_timestamp();
+                time_elapsed = current_timestamp - temp_stream.withdraw_time;
+                withdraw_time = current_timestamp;
             }
 
             // Calculate the withdrawal amount
@@ -320,6 +324,8 @@ impl Contract {
         // convert id to native u64
         let id: u64 = stream_id.0;
 
+        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
+
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
 
@@ -328,7 +334,7 @@ impl Contract {
 
         // Can only be paused after the stream has started and before it has ended
         let can_pause =
-            env::block_timestamp() > stream.start_time && env::block_timestamp() < stream.end_time;
+            current_timestamp > stream.start_time && current_timestamp < stream.end_time;
         require!(
             can_pause,
             "Can only be pause after stream starts and before it has ended"
@@ -339,7 +345,7 @@ impl Contract {
 
         // update the stream state
         stream.is_paused = true;
-        stream.paused_time = env::block_timestamp();
+        stream.paused_time = current_timestamp;
         self.streams.insert(&id, &stream);
 
         // Log
@@ -350,6 +356,7 @@ impl Contract {
         // convert id to native u64
         let id: u64 = stream_id.0;
 
+        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
 
@@ -365,10 +372,10 @@ impl Contract {
 
         // Update the withdraw_time so that the receiver will not be
         // able to withdraw fund for paused time
-        if env::block_timestamp() > stream.end_time {
+        if current_timestamp > stream.end_time {
             stream.withdraw_time += stream.end_time - stream.paused_time;
         } else {
-            stream.withdraw_time += env::block_timestamp() - stream.paused_time;
+            stream.withdraw_time += current_timestamp - stream.paused_time;
         }
 
         // Reset the paused_time and save
@@ -383,6 +390,7 @@ impl Contract {
         // convert id to native u64
         let id: u64 = stream_id.0;
 
+        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
 
@@ -394,7 +402,7 @@ impl Contract {
 
         // Stream can only be cancelled if it has not ended
         require!(
-            temp_stream.end_time > env::block_timestamp(),
+            temp_stream.end_time > current_timestamp,
             "Stream already ended"
         );
 
@@ -408,7 +416,7 @@ impl Contract {
                 u128::from(temp_stream.paused_time - temp_stream.withdraw_time) * temp_stream.rate;
         } else {
             receiver_amt =
-                u128::from(env::block_timestamp() - temp_stream.withdraw_time) * temp_stream.rate;
+                u128::from(current_timestamp - temp_stream.withdraw_time) * temp_stream.rate;
         }
 
         // Calculate the amoun to refund to the sender
@@ -460,11 +468,11 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
+    #[should_panic(expected = "The amount provided doesn't matches the stream")]
     fn create_stream_invalid_amount() {
         let start = env::block_timestamp();
         let start_time: U64 = U64::from(start);
-        let end_time: U64 = U64::from(start + 172800); // 2 days
+        let end_time: U64 = U64::from(start + 172800);
         let sender = accounts(0);
         let receiver = accounts(1);
         let rate = U128::from(1 * NEAR);
@@ -1179,7 +1187,7 @@ mod tests {
         let mut builder = VMContextBuilder::new();
         builder.predecessor_account_id(predecessor);
         builder.attached_deposit(amount);
-        builder.block_timestamp(ts);
+        builder.block_timestamp(ts * 1e9 as u64);
         testing_env!(builder.build());
     }
 }
