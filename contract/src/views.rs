@@ -1,5 +1,5 @@
-use near_sdk::{near_bindgen, AccountId, Balance};
 use crate::*;
+use near_sdk::{near_bindgen, AccountId, Balance};
 
 // mainly for `ft_on_transfer`
 #[derive(Deserialize, Serialize, Debug)]
@@ -34,7 +34,12 @@ impl Contract {
             .collect()
     }
 
-    pub fn get_streams_by_user(&self, user_id: AccountId, from_index: Option<U128>, limit: Option<U64>) -> Vec<Stream> {
+    pub fn get_streams_by_user(
+        &self,
+        user_id: AccountId,
+        from_index: Option<U128>,
+        limit: Option<U64>,
+    ) -> Vec<Stream> {
         let start = u128::from(from_index.unwrap_or(U128(0)));
 
         self.streams
