@@ -142,17 +142,22 @@ impl Contract {
         end: Option<U64>,
         rate: Option<U128>,
     ) {
-        // convert id to native u128
-        let rate = u128::from(rate.unwrap_or(U128(0)));
-        let start_time = u64::from(start.unwrap_or(U64(0)));
-        let end_time = u64::from(end.unwrap_or(U64(0)));
+        // convert to native u64
         let id: u64 = stream_id.0;
 
-        // Check the start and end timestamp is valid
+        // get the stream
         let mut stream = self.streams.get(&id).unwrap();
 
+        // check the stream can be udpated
         require!(stream.can_update, "Stream cannot be updated");
 
+        // convert id to native u128
+        let rate = u128::from(rate.unwrap_or(U128(stream.rate)));
+        let start_time = u64::from(start.unwrap_or(U64(stream.start_time)));
+        let end_time = u64::from(end.unwrap_or(U64(stream.end_time)));
+
+
+        // Check the start and end timestamp is valid
         require!(
             stream.start_time > env::block_timestamp(),
             "Cannot update: stream already started"
@@ -168,9 +173,9 @@ impl Contract {
                 "Start time cannot be in the past"
             );
         }
+        require!(rate > 0, "Rate cannot be zero");
 
         // check the rate is valid
-        require!(rate > 0, "Rate cannot be zero");
         require!(rate < MAX_RATE, "Rate is too high");
 
         stream.start_time = start_time;
