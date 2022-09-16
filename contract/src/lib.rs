@@ -503,8 +503,8 @@ impl Contract {
             temp_stream.balance = 0;
             self.streams.insert(&id, &temp_stream);
             Promise::new(sender)
-                .transfer(sender_amt) // @todo double promise resolution
-                .and(Promise::new(receiver).transfer(receiver_amt))
+                .transfer(sender_amt)
+                .then(Promise::new(receiver).transfer(receiver_amt))
                 .into()
         } else {
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
