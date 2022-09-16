@@ -3,8 +3,8 @@ use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    env, ext_contract, log, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise,
-    Timestamp,
+    env, ext_contract, log, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault,
+    Promise, PromiseOrValue, PromiseResult, Timestamp,
 };
 
 mod calls;
@@ -13,8 +13,19 @@ mod views;
 pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
 pub const ONE_YOCTO: Balance = 1;
 pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
-                                                                 // rate is in tokens per nano seconds
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
+pub const NO_DEPOSIT: u128 = 0; // Attach no deposit.
+
+/// 10T gas for basic operation
+pub const GAS_FOR_BASIC_OP: Gas = Gas(10_000_000_000_000);
+
+// @todo add gas as per the requirement of the mainnet before deployment
+
+// const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas(5_000_000_000_000);
+// const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas(25_000_000_000_000 + GAS_FOR_RESOLVE_TRANSFER.0);
+
+/// Amount of gas for fungible token transfers, increased to 20T
+pub const GAS_FOR_FT_TRANSFER: Gas = Gas(20_000_000_000_000);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -37,6 +48,7 @@ pub struct Stream {
     end_time: Timestamp,
     withdraw_time: Timestamp, // last withdraw time
     is_paused: bool,
+    is_cancelled: bool,
     paused_time: Timestamp, // last paused time
     contract_id: AccountId, // "near.testnet" for NEAR tokens(@todo change later)
     can_update: bool,
@@ -44,12 +56,15 @@ pub struct Stream {
 }
 
 #[ext_contract(ext_ft_transfer)]
-trait NEP141 {
+trait FungibleTokenCore {
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
-// @todo handle callbacks
-// pub trait AterCallback {
+// trait for self callbacks
+#[ext_contract(ext_self)]
+pub trait FTTokenResolver {
+    fn resolve_ft_withdraw(&mut self, stream_id: U64, temp_stream: Stream) -> bool;
+}
 
 #[near_bindgen]
 impl Contract {
@@ -114,6 +129,7 @@ impl Contract {
             receiver,
             rate,
             is_paused: false,
+            is_cancelled: false,
             balance: env::attached_deposit(),
             created: current_timestamp,
             start_time,
@@ -158,7 +174,6 @@ impl Contract {
         let start_time = u64::from(start.unwrap_or(U64(stream.start_time)));
         let end_time = u64::from(end.unwrap_or(U64(stream.end_time)));
 
-
         // Check the start and end timestamp is valid
         require!(
             stream.start_time > current_timestamp,
@@ -202,7 +217,35 @@ impl Contract {
         self.streams.insert(&id, &stream);
     }
 
-    pub fn withdraw(&mut self, stream_id: U64) -> Promise {
+    #[private]
+    pub fn internal_resolve_ft_withdraw(&mut self, stream_id: U64, temp_stream: Stream) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::NotReady => env::abort(),
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if res {
+            self.streams.insert(&stream_id.into(), &temp_stream);
+        }
+        return res;
+    }
+
+    #[private]
+    pub fn internal_resolve_ft_claim(&mut self, stream_id: U64, temp_stream: &mut Stream) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::NotReady => env::abort(),
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if res {
+            temp_stream.balance = 0;
+            self.streams.insert(&stream_id.into(), &temp_stream);
+        }
+        return res;
+    }
+
+    #[payable]
+    pub fn withdraw(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
         // convert id to native u64
         let id: u64 = stream_id.0;
 
@@ -212,6 +255,10 @@ impl Contract {
         let mut temp_stream = self.streams.get(&id).unwrap();
 
         require!(temp_stream.balance > 0, "No balance to withdraw");
+        require!(
+            !temp_stream.is_cancelled,
+            "Stream is cancelled by sender already!"
+        );
 
         // assert the stream has started
         require!(
@@ -254,19 +301,22 @@ impl Contract {
 
             // Update stream and save
             temp_stream.balance -= remaining_balance;
-            self.streams.insert(&id, &temp_stream);
             // Transfer tokens to the sender
             let receiver = temp_stream.sender.clone();
 
             if temp_stream.contract_id == "near.testnet".parse().unwrap() {
-                Promise::new(receiver).transfer(remaining_balance)
+                self.streams.insert(&stream_id.into(), &temp_stream);
+                Promise::new(receiver).transfer(remaining_balance).into()
             } else {
                 // NEP141 : ft_transfer()
-                ext_ft_transfer::ext(temp_stream.contract_id).ft_transfer(
-                    receiver,
-                    remaining_balance.into(),
-                    None,
-                )
+                ext_ft_transfer::ext(temp_stream.contract_id.clone())
+                    .with_attached_deposit(1)
+                    .ft_transfer(receiver, remaining_balance.into(), None)
+                    .then(
+                        Self::ext(env::current_account_id())
+                            .internal_resolve_ft_withdraw(stream_id, temp_stream),
+                    )
+                    .into()
             }
 
         // Case: Receiver can withdraw the amount fromt the stream
@@ -300,22 +350,32 @@ impl Contract {
 
             // Transfer the tokens to the receiver
             let receiver = temp_stream.receiver.clone();
-            require!(withdrawal_amount > 0);
+            require!(withdrawal_amount > 0, "withdrawal_amount < 0");
 
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
-            self.streams.insert(&id, &temp_stream);
 
             if temp_stream.contract_id == "near.testnet".parse().unwrap() {
-                Promise::new(receiver).transfer(withdrawal_amount)
+                self.streams.insert(&stream_id.into(), &temp_stream);
+                Promise::new(receiver).transfer(withdrawal_amount).into()
             } else {
                 // NEP141 : ft_transfer()
-                ext_ft_transfer::ext(temp_stream.contract_id).ft_transfer(
-                    receiver,
-                    withdrawal_amount.into(),
-                    None,
-                )
+                // require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER, "More gas is required");
+                // log!("{:?}", temp_stream);
+                ext_ft_transfer::ext(temp_stream.contract_id.clone())
+                    // .with_static_gas(GAS_FOR_FT_TRANSFER)
+                    .with_attached_deposit(1)
+                    .ft_transfer(receiver, withdrawal_amount.into(), None)
+                    .then(
+                        // ext_self::ext(env::current_account_id())
+                        // .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
+                        // .resolve_ft_withdraw(stream_id, temp_stream),
+                        // ext_self::ft
+                        Self::ext(env::current_account_id())
+                            .internal_resolve_ft_withdraw(stream_id, temp_stream),
+                    )
+                    .into()
             }
         }
     }
@@ -386,7 +446,11 @@ impl Contract {
         log!("Stream resumed: {}", stream.id);
     }
 
-    pub fn cancel(&mut self, stream_id: U64) -> Promise {
+    #[payable]
+    pub fn cancel(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
+        //  only tranfsers the tokens to receiver
+        //  sender can claim using ft_claim_sender
+
         // convert id to native u64
         let id: u64 = stream_id.0;
 
@@ -405,6 +469,7 @@ impl Contract {
             temp_stream.end_time > current_timestamp,
             "Stream already ended"
         );
+        require!(!temp_stream.is_cancelled, "already cancelled!");
 
         // Amounts to refund to the sender and the receiver
         let sender_amt: u128;
@@ -427,27 +492,52 @@ impl Contract {
         let receiver = temp_stream.receiver.clone();
 
         // Update the stream balance and save
-        temp_stream.balance = 0;
-        self.streams.insert(&id, &temp_stream);
+        temp_stream.balance = sender_amt;
+        temp_stream.is_cancelled = true;
+        // self.streams.insert(&id, &temp_stream);
 
         // log
         log!("Stream cancelled: {}", temp_stream.id);
 
         if temp_stream.contract_id == "near.testnet".parse().unwrap() {
+            temp_stream.balance = 0;
+            self.streams.insert(&id, &temp_stream);
             Promise::new(sender)
-                .transfer(sender_amt)
+                .transfer(sender_amt) // @todo double promise resolution
                 .and(Promise::new(receiver).transfer(receiver_amt))
+                .into()
         } else {
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
-                .ft_transfer(sender, sender_amt.into(), None)
-                .and(
-                    ext_ft_transfer::ext(temp_stream.contract_id.clone()).ft_transfer(
-                        receiver,
-                        receiver_amt.into(),
-                        None,
-                    ),
+                .with_attached_deposit(1)
+                .ft_transfer(receiver, receiver_amt.into(), None)
+                .then(
+                    Self::ext(env::current_account_id())
+                        .internal_resolve_ft_withdraw(stream_id, temp_stream),
                 )
+                .into()
         }
+    }
+
+    // allows the sender to withdraw funds if the stream is_cancelled.
+    pub fn ft_claim_sender(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
+        // convert id to native u64
+        let id: u64 = stream_id.0;
+
+        // Get the stream
+        let mut temp_stream = self.streams.get(&id).unwrap();
+        require!(
+            temp_stream.sender == env::predecessor_account_id(),
+            "not sender"
+        );
+        require!(temp_stream.is_cancelled, "stream is not cancelled!");
+        ext_ft_transfer::ext(temp_stream.contract_id.clone())
+            .with_attached_deposit(1)
+            .ft_transfer(temp_stream.sender.clone(), temp_stream.balance.into(), None)
+            .then(
+                Self::ext(env::current_account_id())
+                    .internal_resolve_ft_claim(stream_id, &mut temp_stream),
+            )
+            .into()
     }
 }
 
@@ -1162,9 +1252,9 @@ mod tests {
         assert_eq!(stream.receiver, accounts(1));
         assert_eq!(stream.balance, 20 * NEAR);
         assert_eq!(stream.rate, 10 * NEAR);
-        assert_eq!(stream.start_time, start+12);
-        assert_eq!(stream.end_time, start+14);
-        assert_eq!(stream.withdraw_time, start+12);
+        assert_eq!(stream.start_time, start + 12);
+        assert_eq!(stream.end_time, start + 14);
+        assert_eq!(stream.withdraw_time, start + 12);
         assert_eq!(stream.paused_time, 0);
         assert_eq!(stream.can_update, true);
         assert_eq!(stream.can_cancel, false);
