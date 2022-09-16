@@ -35,7 +35,7 @@ pub struct Contract {
 }
 // Define the stream structure
 #[near_bindgen]
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct Stream {
     id: u64,
@@ -174,7 +174,6 @@ impl Contract {
         let start_time = u64::from(start.unwrap_or(U64(stream.start_time)));
         let end_time = u64::from(end.unwrap_or(U64(stream.end_time)));
 
-
         // Check the start and end timestamp is valid
         require!(
             stream.start_time > current_timestamp,
@@ -230,6 +229,7 @@ impl Contract {
         }
         return res;
     }
+
     #[private]
     pub fn internal_resolve_ft_claim(&mut self, stream_id: U64, temp_stream: &mut Stream) -> bool {
         let res: bool = match env::promise_result(0) {
@@ -301,7 +301,6 @@ impl Contract {
 
             // Update stream and save
             temp_stream.balance -= remaining_balance;
-            // self.streams.insert(&id, &temp_stream);
             // Transfer tokens to the sender
             let receiver = temp_stream.sender.clone();
 
@@ -312,7 +311,6 @@ impl Contract {
                 // NEP141 : ft_transfer()
                 ext_ft_transfer::ext(temp_stream.contract_id.clone())
                     .with_attached_deposit(1)
-                    // .with_static_gas(GAS_FOR_FT_TRANSFER)
                     .ft_transfer(receiver, remaining_balance.into(), None)
                     .then(
                         Self::ext(env::current_account_id())
@@ -357,7 +355,6 @@ impl Contract {
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
-            // self.streams.insert(&id, &temp_stream);
 
             if temp_stream.contract_id == "near.testnet".parse().unwrap() {
                 self.streams.insert(&stream_id.into(), &temp_stream);
@@ -514,10 +511,6 @@ impl Contract {
                 .with_attached_deposit(1)
                 .ft_transfer(receiver, receiver_amt.into(), None)
                 .then(
-                    // ext_self::ext(env::current_account_id())
-                    //     .with_attached_deposit(1)
-                    // .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
-                    //     .resolve_ft_withdraw(stream_id, temp_stream),
                     Self::ext(env::current_account_id())
                         .internal_resolve_ft_withdraw(stream_id, temp_stream),
                 )
@@ -1259,9 +1252,9 @@ mod tests {
         assert_eq!(stream.receiver, accounts(1));
         assert_eq!(stream.balance, 20 * NEAR);
         assert_eq!(stream.rate, 10 * NEAR);
-        assert_eq!(stream.start_time, start+12);
-        assert_eq!(stream.end_time, start+14);
-        assert_eq!(stream.withdraw_time, start+12);
+        assert_eq!(stream.start_time, start + 12);
+        assert_eq!(stream.end_time, start + 14);
+        assert_eq!(stream.withdraw_time, start + 12);
         assert_eq!(stream.paused_time, 0);
         assert_eq!(stream.can_update, true);
         assert_eq!(stream.can_cancel, false);
