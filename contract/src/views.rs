@@ -10,6 +10,8 @@ pub struct StreamView {
     pub stream_rate: U128,
     pub start: U64,
     pub end: U64,
+    pub can_update: bool,
+    pub can_cancel: bool,
 }
 
 #[near_bindgen]
