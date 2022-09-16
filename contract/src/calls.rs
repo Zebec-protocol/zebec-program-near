@@ -1,5 +1,6 @@
 use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
+
 use near_sdk::{PromiseOrValue, Timestamp, serde_json};
 
 pub use crate::views::*;
@@ -49,6 +50,7 @@ impl Contract {
             receiver,
             rate,
             is_paused: false,
+            is_cancelled:false,
             balance: amount.into(),
             created: env::block_timestamp(),
             start_time,

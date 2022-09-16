@@ -13,7 +13,6 @@ near call stream.remora.testnet create_stream '{"receiver": "stream.remora.testn
 
 near call stream.remora.testnet get_stream '{"stream_id": "1"}' ----accountId remora.testnet
 
-
 near call stream.remora.testnet  create_stream '{"receiver": "sub1.twojoy.testnet", "stream_rate": "10000000", "start": "1662709833946590000", "end": "1672707999000000000"}' --amount 0.000004 --account-id remora.testnet ----depositYocto 10000000010000000000
 
 near call stream.remora.testnet  create_stream '{"receiver": "sub1.twojoy.testnet", "stream_rate": "1000", "start": "1663056149517379000", "end": "1663063349517379000"}' --depositYocto 600000000000000 --account-id remora.testnet
@@ -189,4 +188,23 @@ Transaction Id Cm9J5E83z3K1hA8rHUQZfD9jsoVhboA86GR2yqxsBMRB
 To see the transaction in the transaction explorer, please open this url in your browser
 https://explorer.testnet.near.org/transactions/Cm9J5E83z3K1hA8rHUQZfD9jsoVhboA86GR2yqxsBMRB
 '0'
+```
+2. test of the functionality from a different user
+
+```
+// create a new sub-account
+ near create-account sender.remora.testnet --masterAccount remora.testnet --initialBalance 10
+
+
+// get wNear
+near call wrap.testnet near_deposit --deposit 2 --accountId  sender.remora.testnet
+
+
+// register to wrap.testnet 
+// since the receiver, stream.remora.testnet is already registered, we don't need to
+near call wrap.testnet storage_deposit '{"account_id": "stream.remora.testnet"}' --accountId sender.remora.testnet --amount 0.00125
+
+
+// create_stream 
+near call wrap.testnet ft_transfer_call '{"amount": "7200000000000000","receiver_id": "stream.remora.testnet", "memo": "test", "msg":"{\"method_name\": \"create_stream\", \"receiver\":\"receiver.remora.testnet\",\"stream_rate\":\"1000\",\"start\":\"1663067627775296000\",\"end\":\"1663074827775296000\"}"}' --depositYocto 1 --gas 200000000000000 --accountId sender.remora.testnet
 ```
