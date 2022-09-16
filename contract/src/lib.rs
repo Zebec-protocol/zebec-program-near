@@ -1,12 +1,10 @@
-use near_contract_standards::fungible_token::receiver;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::env::log_str;
 use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    assert_one_yocto, env, ext_contract, log, near_bindgen, require, AccountId, Balance, Gas,
-    PanicOnDefault, Promise, PromiseOrValue, PromiseResult, Timestamp,
+    env, ext_contract, log, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault,
+    Promise, PromiseOrValue, PromiseResult, Timestamp,
 };
 
 mod calls;
@@ -15,15 +13,15 @@ mod views;
 pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
 pub const ONE_YOCTO: Balance = 1;
 pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
-                                                                 // rate is in tokens per nano seconds
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
-                                                                   // Attach no deposit.
-pub const NO_DEPOSIT: u128 = 0;
+pub const NO_DEPOSIT: u128 = 0; // Attach no deposit.
 
 /// 10T gas for basic operation
 pub const GAS_FOR_BASIC_OP: Gas = Gas(10_000_000_000_000);
 
-const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas(5_000_000_000_000);
+// @todo add gas as per the requirement of the mainnet before deployment
+
+// const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas(5_000_000_000_000);
 // const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas(25_000_000_000_000 + GAS_FOR_RESOLVE_TRANSFER.0);
 
 /// Amount of gas for fungible token transfers, increased to 20T
@@ -308,6 +306,7 @@ impl Contract {
             let receiver = temp_stream.sender.clone();
 
             if temp_stream.contract_id == "near.testnet".parse().unwrap() {
+                self.streams.insert(&stream_id.into(), &temp_stream);
                 Promise::new(receiver).transfer(remaining_balance).into()
             } else {
                 // NEP141 : ft_transfer()
@@ -361,7 +360,7 @@ impl Contract {
             // self.streams.insert(&id, &temp_stream);
 
             if temp_stream.contract_id == "near.testnet".parse().unwrap() {
-                // @todo this will revert in same tx, right ?
+                self.streams.insert(&stream_id.into(), &temp_stream);
                 Promise::new(receiver).transfer(withdrawal_amount).into()
             } else {
                 // NEP141 : ft_transfer()
@@ -533,7 +532,10 @@ impl Contract {
 
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
-        require!(temp_stream.sender == env::predecessor_account_id(), "not sender");
+        require!(
+            temp_stream.sender == env::predecessor_account_id(),
+            "not sender"
+        );
         require!(temp_stream.is_cancelled, "stream is not cancelled!");
         ext_ft_transfer::ext(temp_stream.contract_id.clone())
             .with_attached_deposit(1)

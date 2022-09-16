@@ -1,5 +1,5 @@
 use crate::*;
-use near_sdk::{near_bindgen, AccountId, Balance};
+use near_sdk::{near_bindgen, AccountId};
 
 // mainly for `ft_on_transfer`
 #[derive(Deserialize, Serialize, Debug)]
@@ -87,7 +87,7 @@ mod tests {
 
         set_context_with_balance(sender.clone(), 172800 * NEAR);
 
-        contract.create_stream(receiver.clone(), rate, start_time, end_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, false, false);
         assert_eq!(contract.current_id, 2);
         let params_key = 1;
         let stream = contract.streams.get(&params_key).unwrap();
