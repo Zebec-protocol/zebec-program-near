@@ -495,7 +495,9 @@ impl Contract {
         let receiver_amt: u128;
 
         // Calculate the amount to refund to the receiver
-        if temp_stream.is_paused {
+        if current_timestamp < temp_stream.start_time {
+            receiver_amt = 0;
+        } else if temp_stream.is_paused {
             receiver_amt =
                 u128::from(temp_stream.paused_time - temp_stream.withdraw_time) * temp_stream.rate;
         } else {
@@ -1180,6 +1182,30 @@ mod tests {
         let start = env::block_timestamp();
         let start_time: U64 = U64::from(start);
         let end_time: U64 = U64::from(start + 10);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        set_context_with_balance(sender.clone(), 10 * NEAR);
+
+        // 2. create stream and cancel
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, true, false);
+        let stream_id = U64::from(1);
+        set_context_with_balance_timestamp(sender.clone(), 0, start + 1);
+        contract.cancel(stream_id);
+
+        // 3. assert internal balance
+        let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
+        assert_eq!(internal_balance, 0);
+    }
+
+    #[test]
+    fn test_cancel_before_start() {
+        // 1. Create the contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start + 10);
+        let end_time: U64 = U64::from(start + 20);
         let sender = &accounts(0); // alice
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
