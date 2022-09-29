@@ -6,6 +6,7 @@ use near_sdk::{
     env, ext_contract, log, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault,
     Promise, PromiseOrValue, PromiseResult, Timestamp,
 };
+use near_sdk::utils::assert_one_yocto;
 
 mod calls;
 mod views;
@@ -262,6 +263,11 @@ impl Contract {
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
 
+        // Check 1 yocto token for ft_token call
+        if !temp_stream.is_native {
+            assert_one_yocto();
+        }
+
         require!(temp_stream.balance > 0, "No balance to withdraw");
         require!(
             !temp_stream.is_cancelled,
@@ -465,6 +471,11 @@ impl Contract {
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
+
+        // Check 1 yocto token for ft_token call
+        if !temp_stream.is_native {
+            assert_one_yocto();
+        }
 
         // check that the stream can be cancelled
         require!(temp_stream.can_cancel, "Stream cannot be cancelled");
