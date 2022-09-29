@@ -157,6 +157,7 @@ impl Contract {
         U64::from(params_key)
     }
 
+    #[payable]
     pub fn update(
         &mut self,
         stream_id: U64,
