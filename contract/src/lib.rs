@@ -167,7 +167,9 @@ impl Contract {
         let mut stream = self.streams.get(&id).unwrap();
 
         // check the stream can be udpated
+        require!(env::predecessor_account_id() == stream.sender, "You are not authorized to update this stream");
         require!(stream.can_update, "Stream cannot be updated");
+        require!(!stream.is_cancelled, "Stream has already been cancelled");
 
         // convert id to native u128
         let rate = u128::from(rate.unwrap_or(U128(stream.rate)));
@@ -1161,6 +1163,35 @@ mod tests {
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 0);
     }
+
+    #[test]
+    #[should_panic(expected = "You are not authorized to update this stream")]
+    fn test_update_unauthorized() {
+        // 1. Create the contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start + 10);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        set_context_with_balance(sender.clone(), 10 * NEAR);
+
+        // 2. create stream and cancel
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, false, true);
+        let stream_id = U64::from(1);
+
+        set_context_with_balance_timestamp(receiver.clone(), 0, start + 11);
+
+        contract.update(
+            stream_id,
+            Option::Some(U64::from(start + 12)),
+            Option::Some(U64::from(start + 14)),
+            Option::Some(U128::from(2 * NEAR)),
+        );
+    }
+
 
     #[test]
     #[should_panic(expected = "Cannot update: stream already started")]
