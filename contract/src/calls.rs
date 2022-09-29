@@ -84,12 +84,8 @@ impl Contract {
             "usdn.testnet".parse().unwrap(),
             "wrap.testnet".parse().unwrap(),
         ];
-        if accounts.contains(&account) {
-            // @todo: check if the accountID is in explicit (".near") or implicit format
-            return true;
-        } else {
-            return false;
-        }
+        // @todo: check if the accountID is in explicit (".near") or implicit format
+        accounts.contains(&account)
     }
 }
 
