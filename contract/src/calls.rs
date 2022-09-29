@@ -68,6 +68,7 @@ impl Contract {
             contract_id,
             can_cancel,
             can_update,
+            is_native: false,
         };
 
         self.streams.insert(&params_key, &stream_params);

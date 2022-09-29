@@ -50,9 +50,10 @@ pub struct Stream {
     is_paused: bool,
     is_cancelled: bool,
     paused_time: Timestamp, // last paused time
-    contract_id: AccountId, // "near.testnet" for NEAR tokens(@todo change later)
+    contract_id: AccountId, // will be ignored for native stream
     can_update: bool,
     can_cancel: bool,
+    is_native: bool,
 }
 
 #[ext_contract(ext_ft_transfer)]
@@ -124,7 +125,7 @@ impl Contract {
         );
 
         let params_key = self.current_id;
-        let near_token_id: AccountId = "near.testnet".parse().unwrap();
+        let near_token_id: AccountId = "near.testnet".parse().unwrap(); // this will be ignored for native stream
 
         let stream_params = Stream {
             id: params_key,
@@ -142,6 +143,7 @@ impl Contract {
             contract_id: near_token_id,
             can_cancel,
             can_update,
+            is_native: true,
         };
 
         // Save the stream
@@ -309,7 +311,7 @@ impl Contract {
             // Transfer tokens to the sender
             let receiver = temp_stream.sender.clone();
 
-            if temp_stream.contract_id == "near.testnet".parse().unwrap() {
+            if temp_stream.is_native {
                 self.streams.insert(&stream_id.into(), &temp_stream);
                 Promise::new(receiver).transfer(remaining_balance).into()
             } else {
@@ -361,7 +363,7 @@ impl Contract {
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
 
-            if temp_stream.contract_id == "near.testnet".parse().unwrap() {
+            if temp_stream.is_native {
                 self.streams.insert(&stream_id.into(), &temp_stream);
                 Promise::new(receiver).transfer(withdrawal_amount).into()
             } else {
@@ -504,7 +506,7 @@ impl Contract {
         // log
         log!("Stream cancelled: {}", temp_stream.id);
 
-        if temp_stream.contract_id == "near.testnet".parse().unwrap() {
+        if temp_stream.is_native {
             temp_stream.balance = 0;
             self.streams.insert(&id, &temp_stream);
             Promise::new(sender)
