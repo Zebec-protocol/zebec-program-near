@@ -100,6 +100,9 @@ impl Contract {
         );
         require!(end_time >= start_time, "Start time cannot be in the past");
 
+        // Check the receiver and sender are not same
+        require!(receiver != env::predecessor_account_id(), "Sender and receiver cannot be Same");
+
         // check the rate is valid
         require!(rate > 0, "Rate cannot be zero");
         require!(rate < MAX_RATE, "Rate is too high");
@@ -573,6 +576,23 @@ mod tests {
 
         set_context_with_balance(sender, 200000 * NEAR);
         contract.create_stream(receiver.clone(), rate, start_time, end_time, false, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "Sender and receiver cannot be Same")]
+    fn create_stream_invalid_receipient() {
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 172800); // 2 days
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(0); // alice
+        let rate = U128::from(1 * NEAR);
+
+        let mut contract = Contract::new();
+
+        set_context_with_balance(sender.clone(), 172800 * NEAR);
+
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, true, false);
     }
 
     #[test]
