@@ -365,7 +365,7 @@ impl Contract {
         let mut stream = self.streams.get(&id).unwrap();
 
         // Only the sender can pause the stream
-        require!(env::predecessor_account_id() == stream.sender);
+        require!(env::predecessor_account_id() == stream.sender, "Stream can only be paused by the sender");
 
         // Can only be paused after the stream has started and before it has ended
         let can_pause =
@@ -398,7 +398,7 @@ impl Contract {
         let mut stream = self.streams.get(&id).unwrap();
 
         // Only the sender can resume the stream
-        require!(env::predecessor_account_id() == stream.sender);
+        require!(env::predecessor_account_id() == stream.sender, "Stream can only be resumed by the sender");
 
         // assert that the stream is already paused
         require!(stream.is_paused, "Cannot resume unpaused stream");
@@ -445,7 +445,7 @@ impl Contract {
         require!(temp_stream.can_cancel, "Stream cannot be cancelled");
 
         // Only the sender can cancel the stream
-        require!(env::predecessor_account_id() == temp_stream.sender);
+        require!(env::predecessor_account_id() == temp_stream.sender, "Stream can only be cancelled by the stream sender");
 
         // Stream can only be cancelled if it has not ended
         require!(

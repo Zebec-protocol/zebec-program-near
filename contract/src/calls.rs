@@ -75,7 +75,7 @@ impl FungibleTokenReceiver for Contract {
         amount: U128,
         msg: String,
     ) -> PromiseOrValue<U128> {
-        assert!(Self::valid_ft_sender(env::predecessor_account_id()));
+        assert!(Self::valid_ft_sender(env::predecessor_account_id()), "Invalid or unknown fungible token used");
         // msg contains the structure of the stream
         let res: Result<StreamView, _> = serde_json::from_str(&msg);
         if res.is_err() {
@@ -83,7 +83,7 @@ impl FungibleTokenReceiver for Contract {
             return PromiseOrValue::Value(amount);
         }
         let _stream = res.unwrap();
-        require!(_stream.method_name == "create_stream".to_string());
+        require!(_stream.method_name == "create_stream".to_string(), "Invalid method name for creating fungible token stream");
         if self.ft_create_stream(
             _stream.stream_rate,
             _stream.start,
