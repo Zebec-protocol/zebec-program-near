@@ -20,61 +20,39 @@ impl Contract {
         can_cancel: bool,
         can_update: bool,
     ) -> bool {
-        // check that the receiver and sender are not the same
-        assert!(sender != receiver, "Sender and receiver cannot be the same");
-
-        // convert id to native u128
-        let rate: u128 = stream_rate.0;
-        let start_time: u64 = start_time.0;
-        let end_time: u64 = end_time.0;
-
-        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
-        // Check the start and end timestamp is valid
-        require!(
-            start_time >= current_timestamp,
-            "Start time cannot be in the past"
-        );
-        require!(end_time >= start_time, "Start time cannot be in the past");
-
-        // check the rate is valid
-        require!(rate > 0, "Rate cannot be zero");
-        require!(rate < MAX_RATE, "Rate is too high");
-
-        // calculate the balance is enough
-        let stream_duration = end_time - start_time;
-        let stream_amount = u128::from(stream_duration) * rate;
-
-        // check the amount send to the stream
-        require!(
-            amount.0 == stream_amount,
-            "The amount provided doesn't matches the stream"
-        );
+        // Check the receiver and sender are not same
+        require!(receiver != sender, "Sender and receiver cannot be Same");
 
         let params_key = self.current_id;
 
-        let stream_params = Stream {
-            id: params_key,
+        let stream: Stream = self.validate_stream(
+            U64::from(params_key),
             sender,
             receiver,
-            rate,
-            is_paused: false,
-            is_cancelled: false,
-            balance: amount.0,
-            created: current_timestamp,
+            stream_rate,
             start_time,
             end_time,
-            withdraw_time: start_time,
-            paused_time: start_time,
-            contract_id,
             can_cancel,
             can_update,
-            is_native: false,
-        };
+            false,
+            contract_id,
+        );
 
-        self.streams.insert(&params_key, &stream_params);
+        // check the amount send to the stream
+        require!(
+            amount.0 == stream.balance,
+            "The amount provided doesn't matches the stream"
+        );
+
+        // Save the stream
+        self.streams.insert(&params_key, &stream);
+
+        // Update the global stream count for next stream
         self.current_id += 1;
-        log!("Saving streams {}", stream_params.id);
-        return true;
+
+        log!("Saving streams {}", stream.id);
+
+        true
     }
 
     pub fn valid_ft_sender(account: AccountId) -> bool {

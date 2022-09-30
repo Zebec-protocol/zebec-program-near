@@ -10,6 +10,7 @@ use near_sdk::utils::assert_one_yocto;
 
 mod calls;
 mod views;
+mod utils;
 
 pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
 pub const ONE_YOCTO: Balance = 1;
@@ -89,71 +90,37 @@ impl Contract {
         can_cancel: bool,
         can_update: bool,
     ) -> U64 {
-        // convert id to native u128
-        let rate: u128 = stream_rate.0;
-        let start_time: u64 = start.0;
-        let end_time: u64 = end.0;
-
-        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
-        // Check the start and end timestamp is valid
-        require!(
-            start_time >= current_timestamp,
-            "Start time cannot be in the past"
-        );
-        require!(end_time >= start_time, "Start time cannot be in the past");
-
         // Check the receiver and sender are not same
         require!(receiver != env::predecessor_account_id(), "Sender and receiver cannot be Same");
 
-        // check the rate is valid
-        require!(rate > 0, "Rate cannot be zero");
-        require!(rate < MAX_RATE, "Rate is too high");
+        let params_key = self.current_id;
 
-        // calculate the balance is enough
-        let stream_duration = end_time - start_time;
-        let stream_amount = u128::from(stream_duration) * rate;
+        let stream: Stream = self.validate_stream(
+            U64::from(params_key),
+            env::predecessor_account_id(),
+            receiver,
+            stream_rate,
+            start,
+            end,
+            can_cancel,
+            can_update,
+            true,
+            "near.testnet".parse().unwrap(),
+        );
 
         // check the amount send to the stream
         require!(
-            env::attached_deposit() == stream_amount,
+            env::attached_deposit() == stream.balance,
             "The amount provided doesn't matches the stream"
         );
 
-        // check that the receiver and sender are not the same
-        require!(
-            env::predecessor_account_id() != receiver,
-            "Sender and receiver cannot be the same"
-        );
-
-        let params_key = self.current_id;
-        let near_token_id: AccountId = "near.testnet".parse().unwrap(); // this will be ignored for native stream
-
-        let stream_params = Stream {
-            id: params_key,
-            sender: env::predecessor_account_id(),
-            receiver,
-            rate,
-            is_paused: false,
-            is_cancelled: false,
-            balance: env::attached_deposit(),
-            created: current_timestamp,
-            start_time,
-            end_time,
-            withdraw_time: start_time,
-            paused_time: 0,
-            contract_id: near_token_id,
-            can_cancel,
-            can_update,
-            is_native: true,
-        };
-
         // Save the stream
-        self.streams.insert(&params_key, &stream_params);
+        self.streams.insert(&params_key, &stream);
 
         // Update the global stream count for next stream
         self.current_id += 1;
 
-        log!("Saving streams {}", stream_params.id);
+        log!("Saving streams {}", stream.id);
 
         U64::from(params_key)
     }
