@@ -3,7 +3,7 @@ use near_sdk::collections::UnorderedMap;
 use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    env, ext_contract, log, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault,
+    env, ext_contract, log, near_bindgen, require, AccountId, Balance, PanicOnDefault,
     Promise, PromiseOrValue, PromiseResult, Timestamp,
 };
 use near_sdk::utils::assert_one_yocto;
@@ -12,22 +12,7 @@ mod calls;
 mod views;
 mod utils;
 
-pub const CREATE_STREAM_DEPOSIT: Balance = 100_000_000_000_000_000_000_000; // 0.1 NEAR
-pub const ONE_YOCTO: Balance = 1;
-pub const ONE_NEAR: Balance = 1_000_000_000_000_000_000_000_000; // 1 NEAR
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
-pub const NO_DEPOSIT: u128 = 0; // Attach no deposit.
-
-/// 10T gas for basic operation
-pub const GAS_FOR_BASIC_OP: Gas = Gas(10_000_000_000_000);
-
-// @todo add gas as per the requirement of the mainnet before deployment
-
-// const GAS_FOR_RESOLVE_TRANSFER: Gas = Gas(5_000_000_000_000);
-// const GAS_FOR_FT_TRANSFER_CALL: Gas = Gas(25_000_000_000_000 + GAS_FOR_RESOLVE_TRANSFER.0);
-
-/// Amount of gas for fungible token transfers, increased to 20T
-pub const GAS_FOR_FT_TRANSFER: Gas = Gas(20_000_000_000_000);
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
