@@ -173,28 +173,17 @@ impl Contract {
     }
 
     #[private]
-    pub fn internal_resolve_ft_withdraw(&mut self, stream_id: U64, temp_stream: Stream) -> bool {
+    pub fn internal_resolve_update_stream(
+        &mut self,
+        stream_id: U64,
+        revert_stream: &Stream
+    ) -> bool {
         let res: bool = match env::promise_result(0) {
-            PromiseResult::NotReady => env::abort(),
             PromiseResult::Successful(_) => true,
             _ => false,
         };
-        if res {
-            self.streams.insert(&stream_id.into(), &temp_stream);
-        }
-        res
-    }
-
-    #[private]
-    pub fn internal_resolve_ft_claim(&mut self, stream_id: U64, temp_stream: &mut Stream) -> bool {
-        let res: bool = match env::promise_result(0) {
-            PromiseResult::NotReady => env::abort(),
-            PromiseResult::Successful(_) => true,
-            _ => false,
-        };
-        if res {
-            temp_stream.balance = 0;
-            self.streams.insert(&stream_id.into(), temp_stream);
+        if !res {
+            self.streams.insert(&stream_id.into(), &revert_stream);
         }
         res
     }
@@ -208,6 +197,7 @@ impl Contract {
 
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
+        let revert_stream = temp_stream.clone();
 
         // Check 1 yocto token for ft_token call
         if !temp_stream.is_native {
@@ -255,7 +245,7 @@ impl Contract {
                 }
             }
 
-            // Calculate the withdrawl amount
+            // Calculate the withdrawal amount
             let remaining_balance = temp_stream.balance - withdrawal_amount;
             require!(remaining_balance > 0, "Already withdrawn");
 
@@ -266,20 +256,29 @@ impl Contract {
 
             if temp_stream.is_native {
                 self.streams.insert(&stream_id.into(), &temp_stream);
-                Promise::new(receiver).transfer(remaining_balance).into()
+
+                // result is not in the current block, confirmation is in next block
+                Promise::new(receiver)
+                    .transfer(remaining_balance)
+                    .then(
+                        Self::ext(env::current_account_id())
+                            .internal_resolve_update_stream(stream_id, &revert_stream),
+                    )
+                    .into()
             } else {
+                self.streams.insert(&stream_id.into(), &temp_stream);
                 // NEP141 : ft_transfer()
                 ext_ft_transfer::ext(temp_stream.contract_id.clone())
                     .with_attached_deposit(1)
                     .ft_transfer(receiver, remaining_balance.into(), None)
                     .then(
                         Self::ext(env::current_account_id())
-                            .internal_resolve_ft_withdraw(stream_id, temp_stream),
+                            .internal_resolve_update_stream(stream_id, &revert_stream),
                     )
                     .into()
             }
 
-        // Case: Receiver can withdraw the amount fromt the stream
+        // case: when receiver withdraws from the stream
         } else {
             let time_elapsed: u64;
             let withdraw_time: u64;
@@ -318,8 +317,18 @@ impl Contract {
 
             if temp_stream.is_native {
                 self.streams.insert(&stream_id.into(), &temp_stream);
-                Promise::new(receiver).transfer(withdrawal_amount).into()
+
+                Promise::new(receiver)
+                    .transfer(withdrawal_amount)
+                    .then(
+                        Self::ext(env::current_account_id())
+                            .internal_resolve_update_stream(stream_id, &revert_stream),
+                    )
+                    .into()
             } else {
+                // update state
+                self.streams.insert(&stream_id.into(), &temp_stream);
+
                 // NEP141 : ft_transfer()
                 // require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER, "More gas is required");
                 // log!("{:?}", temp_stream);
@@ -331,9 +340,8 @@ impl Contract {
                         // ext_self::ext(env::current_account_id())
                         // .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                         // .resolve_ft_withdraw(stream_id, temp_stream),
-                        // ext_self::ft
                         Self::ext(env::current_account_id())
-                            .internal_resolve_ft_withdraw(stream_id, temp_stream),
+                            .internal_resolve_update_stream(stream_id, &revert_stream),
                     )
                     .into()
             }
@@ -426,6 +434,8 @@ impl Contract {
             assert_one_yocto();
         }
 
+        let revert_stream = temp_stream.clone();
+
         // check that the stream can be cancelled
         require!(temp_stream.can_cancel, "Stream cannot be cancelled");
 
@@ -475,14 +485,20 @@ impl Contract {
             Promise::new(sender)
                 .transfer(sender_amt)
                 .then(Promise::new(receiver).transfer(receiver_amt))
+                .then(
+                    Self::ext(env::current_account_id())
+                        .internal_resolve_update_stream(stream_id, &revert_stream),
+                )
                 .into()
         } else {
+            // update state first
+            self.streams.insert(&id, &temp_stream);
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
                 .with_attached_deposit(1)
                 .ft_transfer(receiver, receiver_amt.into(), None)
                 .then(
                     Self::ext(env::current_account_id())
-                        .internal_resolve_ft_withdraw(stream_id, temp_stream),
+                        .internal_resolve_update_stream(stream_id, &revert_stream),
                 )
                 .into()
         }
@@ -495,17 +511,26 @@ impl Contract {
 
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
+
+        let revert_stream = temp_stream.clone();
         require!(
             temp_stream.sender == env::predecessor_account_id(),
             "not sender"
         );
         require!(temp_stream.is_cancelled, "stream is not cancelled!");
+        let balance = temp_stream.balance;
+        require!(balance > 0, "amount <= 0");
+
+        // update stream state
+        temp_stream.balance = 0;
+        self.streams.insert(&stream_id.into(), &temp_stream);
+
         ext_ft_transfer::ext(temp_stream.contract_id.clone())
             .with_attached_deposit(1)
-            .ft_transfer(temp_stream.sender.clone(), temp_stream.balance.into(), None)
+            .ft_transfer(temp_stream.sender.clone(), balance.into(), None)
             .then(
                 Self::ext(env::current_account_id())
-                    .internal_resolve_ft_claim(stream_id, &mut temp_stream),
+                    .internal_resolve_update_stream(stream_id, &revert_stream),
             )
             .into()
     }
