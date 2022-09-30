@@ -426,7 +426,7 @@ impl Contract {
 
     #[payable]
     pub fn cancel(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
-        //  only tranfsers the tokens to receiver
+        //  only transfers the tokens to receiver
         //  sender can claim using ft_claim_sender
 
         // convert id to native u64
@@ -469,7 +469,7 @@ impl Contract {
                 u128::from(current_timestamp - temp_stream.withdraw_time) * temp_stream.rate;
         }
 
-        // Calculate the amoun to refund to the sender
+        // Calculate the amount to refund to the sender
         sender_amt = temp_stream.balance - receiver_amt;
 
         // Refund the amounts to the sender and the receiver respectively
