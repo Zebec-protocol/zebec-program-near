@@ -63,12 +63,6 @@ trait FungibleTokenCore {
     fn ft_transfer(&mut self, receiver_id: AccountId, amount: U128, memo: Option<String>);
 }
 
-// trait for self callbacks
-#[ext_contract(ext_self)]
-pub trait FTTokenResolver {
-    fn resolve_ft_withdraw(&mut self, stream_id: U64, temp_stream: Stream) -> bool;
-}
-
 #[near_bindgen]
 impl Contract {
     #[init]
