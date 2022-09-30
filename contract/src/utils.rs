@@ -28,7 +28,7 @@ impl Contract {
             start_time >= current_timestamp,
             "Start time cannot be in the past"
         );
-        require!(end_time >= start_time, "Start time cannot smaller than end time");
+        require!(end_time >= start_time, "End time cannot smaller than start time");
 
         // check the rate is valid
         require!(rate > 0, "Rate cannot be zero");

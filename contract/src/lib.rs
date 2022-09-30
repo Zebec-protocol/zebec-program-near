@@ -331,7 +331,7 @@ impl Contract {
 
             // Transfer the tokens to the receiver
             let receiver = temp_stream.receiver.clone();
-            require!(withdrawal_amount > 0, "withdrawal_amount < 0");
+            require!(withdrawal_amount > 0, "There is no balance to withdraw");
 
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
