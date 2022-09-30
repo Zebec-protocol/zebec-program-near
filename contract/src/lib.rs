@@ -378,8 +378,10 @@ impl Contract {
             current_timestamp > stream.start_time && current_timestamp < stream.end_time;
         require!(
             can_pause,
-            "Can only be pause after stream starts and before it has ended"
+            "Stream can only be pause after it starts and before it has ended"
         );
+        require!(!stream.is_cancelled, "Cannot pause cancelled stream");
+
 
         // assert that the stream is already paused
         require!(!stream.is_paused, "Cannot pause already paused stream");
@@ -405,8 +407,9 @@ impl Contract {
         require!(env::predecessor_account_id() == stream.sender);
 
         // assert that the stream is already paused
-        let is_paused = self.streams.get(&id).unwrap().is_paused;
-        require!(is_paused, "Cannot resume unpaused stream");
+        require!(stream.is_paused, "Cannot resume unpaused stream");
+        require!(!stream.is_cancelled, "Cannot resume cancelled stream");
+
 
         // resume the stream
         stream.is_paused = false;
@@ -960,6 +963,114 @@ mod tests {
 
         set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
         contract.withdraw(stream_id); // panics here
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot pause already paused stream")]
+    fn test_sender_pauses_paused_stream() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+        let stream_start_time: u64 = start_time.0;
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, false, false);
+
+        // pause the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        contract.pause(stream_id);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
+        contract.pause(stream_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot resume unpaused stream")]
+    fn test_sender_resume_unpaused_stream() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+        let stream_start_time: u64 = start_time.0;
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, false, false);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
+        contract.resume(stream_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot pause cancelled stream")]
+    fn test_sender_pauses_cancelled_stream() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+        let stream_start_time: u64 = start_time.0;
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, true, true);
+
+        // pause the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        contract.cancel(stream_id);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
+        contract.pause(stream_id);
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot resume cancelled stream")]
+    fn test_sender_resume_cancelled_stream() {
+        // 1. create_stream contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new();
+
+        let stream_id = U64::from(1);
+        let stream_start_time: u64 = start_time.0;
+
+        // 2. create stream
+        set_context_with_balance_timestamp(sender.clone(), 20 * NEAR, stream_start_time);
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, true, true);
+
+        // pause the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 8);
+        contract.pause(stream_id);
+
+        // cancel the stream
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        contract.cancel(stream_id);
+
+        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
+        contract.resume(stream_id);
     }
 
     #[test]
