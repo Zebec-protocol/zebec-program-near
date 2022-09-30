@@ -197,7 +197,7 @@ impl Contract {
         if res {
             self.streams.insert(&stream_id.into(), &temp_stream);
         }
-        return res;
+        res
     }
 
     #[private]
@@ -211,7 +211,7 @@ impl Contract {
             temp_stream.balance = 0;
             self.streams.insert(&stream_id.into(), &temp_stream);
         }
-        return res;
+        res
     }
 
     #[payable]

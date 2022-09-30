@@ -95,9 +95,9 @@ impl FungibleTokenReceiver for Contract {
             _stream.can_cancel,
             _stream.can_update,
         ) {
-            return PromiseOrValue::Value(U128::from(0));
+            PromiseOrValue::Value(U128::from(0))
         } else {
-            return PromiseOrValue::Value(amount);
+            PromiseOrValue::Value(amount)
         }
     }
 }
