@@ -83,7 +83,7 @@ impl FungibleTokenReceiver for Contract {
             return PromiseOrValue::Value(amount);
         }
         let _stream = res.unwrap();
-        require!(_stream.method_name == "create_stream".to_string(), "Invalid method name for creating fungible token stream");
+        require!(_stream.method_name == "create_stream", "Invalid method name for creating fungible token stream");
         if self.ft_create_stream(
             _stream.stream_rate,
             _stream.start,
