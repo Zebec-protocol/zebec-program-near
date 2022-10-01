@@ -60,6 +60,7 @@ mod tests {
     use near_sdk::test_utils::accounts;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::testing_env;
+    use near_contract_standards::storage_management::StorageManagement;
 
     const NEAR: u128 = 1000000000000000000000000;
 
@@ -76,6 +77,11 @@ mod tests {
         testing_env!(builder.build());
     }
 
+    fn register_user(contract: &mut Contract, user_id: AccountId) {
+        set_context_with_balance(user_id.clone(), 1 * NEAR);
+        contract.storage_deposit(Some(user_id), Some(false));
+    }
+
     #[test]
     fn test_get_stream() {
         let start = env::block_timestamp();
@@ -86,6 +92,7 @@ mod tests {
         let rate = U128::from(1 * NEAR);
 
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 172800 * NEAR);
 

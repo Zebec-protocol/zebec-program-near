@@ -1,17 +1,19 @@
+use near_contract_standards::storage_management::StorageBalance;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedMap;
+use near_sdk::collections::{LookupMap, UnorderedMap};
 use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{
-    env, ext_contract, log, near_bindgen, require, AccountId, Balance, PanicOnDefault,
-    Promise, PromiseOrValue, PromiseResult, Timestamp,
-};
 use near_sdk::utils::assert_one_yocto;
+use near_sdk::{
+    env, ext_contract, log, near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise,
+    PromiseOrValue, PromiseResult, StorageUsage, Timestamp,
+};
 
 mod calls;
-mod views;
+mod storage_spec;
 mod utils;
 mod constants;
+mod views;
 
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
 
@@ -20,6 +22,8 @@ pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
 pub struct Contract {
     current_id: u64,
     streams: UnorderedMap<u64, Stream>,
+    pub accounts: LookupMap<AccountId, StorageBalance>,
+    account_storage_usage: StorageUsage,
 }
 // Define the stream structure
 #[near_bindgen]
@@ -54,10 +58,15 @@ impl Contract {
     #[init]
     pub fn new() -> Self {
         require!(!env::state_exists(), "Already initialized");
-        Self {
+
+        let mut this = Self {
             current_id: 1,
             streams: UnorderedMap::new(b"p"),
-        }
+            accounts: LookupMap::new(b"m"),
+            account_storage_usage: 0,
+        };
+        this.measure_account_storage_usage();
+        this
     }
 
     #[payable]
@@ -70,8 +79,18 @@ impl Contract {
         can_cancel: bool,
         can_update: bool,
     ) -> U64 {
-        // Check the receiver and sender are not same
-        require!(receiver != env::predecessor_account_id(), "Sender and receiver cannot be Same");
+        // predecessor_account_id() registered
+        require!(
+            self.accounts.get(&env::predecessor_account_id()).is_some(),
+            "Not registered!"
+        );
+
+        let initial_storage_usage = env::storage_usage();
+
+        require!(
+            receiver != env::predecessor_account_id(),
+            "Sender and receiver cannot be Same"
+        );
 
         let params_key = self.current_id;
 
@@ -97,11 +116,28 @@ impl Contract {
         // Save the stream
         self.streams.insert(&params_key, &stream);
 
+
+        // Verify that the user has enough balance to cover for storage used
+        let mut storage_balance = self.accounts.get(&env::predecessor_account_id()).unwrap();
+        let final_storage_usage = env::storage_usage();
+        let required_storage_balance =
+            (final_storage_usage - initial_storage_usage) as Balance * env::storage_byte_cost();
+
+        require!(
+            storage_balance.available >= required_storage_balance.into(),
+            "Deposit more storage balance!"
+        );
+
         // Update the global stream count for next stream
         self.current_id += 1;
 
-        log!("Saving streams {}", stream.id);
+        // Update the account as per the storage balance used
+        storage_balance.available = (storage_balance.available.0 - required_storage_balance).into();
 
+        self.accounts
+            .insert(&env::predecessor_account_id(), &storage_balance);
+
+        log!("Created stream {}", stream.id);
         U64::from(params_key)
     }
 
@@ -120,8 +156,10 @@ impl Contract {
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
 
-        // check the stream can be udpated
-        require!(env::predecessor_account_id() == stream.sender, "You are not authorized to update this stream");
+        require!(
+            env::predecessor_account_id() == stream.sender,
+            "You are not authorized to update this stream"
+        );
         require!(stream.can_update, "Stream cannot be updated");
         require!(!stream.is_cancelled, "Stream has already been cancelled");
 
@@ -359,7 +397,10 @@ impl Contract {
         let mut stream = self.streams.get(&id).unwrap();
 
         // Only the sender can pause the stream
-        require!(env::predecessor_account_id() == stream.sender, "Stream can only be paused by the sender");
+        require!(
+            env::predecessor_account_id() == stream.sender,
+            "Stream can only be paused by the sender"
+        );
 
         // Can only be paused after the stream has started and before it has ended
         let can_pause =
@@ -369,7 +410,6 @@ impl Contract {
             "Stream can only be pause after it starts and before it has ended"
         );
         require!(!stream.is_cancelled, "Cannot pause cancelled stream");
-
 
         // assert that the stream is already paused
         require!(!stream.is_paused, "Cannot pause already paused stream");
@@ -392,12 +432,14 @@ impl Contract {
         let mut stream = self.streams.get(&id).unwrap();
 
         // Only the sender can resume the stream
-        require!(env::predecessor_account_id() == stream.sender, "Stream can only be resumed by the sender");
+        require!(
+            env::predecessor_account_id() == stream.sender,
+            "Stream can only be resumed by the sender"
+        );
 
         // assert that the stream is already paused
         require!(stream.is_paused, "Cannot resume unpaused stream");
         require!(!stream.is_cancelled, "Cannot resume cancelled stream");
-
 
         // resume the stream
         stream.is_paused = false;
@@ -441,7 +483,10 @@ impl Contract {
         require!(temp_stream.can_cancel, "Stream cannot be cancelled");
 
         // Only the sender can cancel the stream
-        require!(env::predecessor_account_id() == temp_stream.sender, "Stream can only be cancelled by the stream sender");
+        require!(
+            env::predecessor_account_id() == temp_stream.sender,
+            "Stream can only be cancelled by the stream sender"
+        );
 
         // Stream can only be cancelled if it has not ended
         require!(
@@ -543,6 +588,7 @@ mod tests {
     use near_sdk::test_utils::accounts;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::testing_env;
+    use near_contract_standards::storage_management::StorageManagement;
 
     const NEAR: u128 = 1000000000000000000000000;
 
@@ -564,6 +610,7 @@ mod tests {
         let rate = U128::from(1 * NEAR);
 
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender, 200000 * NEAR);
         contract.create_stream(receiver.clone(), rate, start_time, end_time, false, false);
@@ -580,6 +627,7 @@ mod tests {
         let rate = U128::from(1 * NEAR);
 
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 172800 * NEAR);
 
@@ -596,6 +644,7 @@ mod tests {
         let rate = U128::from(1 * NEAR);
 
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 172800 * NEAR);
 
@@ -631,6 +680,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -669,6 +719,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -692,6 +743,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -726,6 +778,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -757,6 +810,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -806,6 +860,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -855,6 +910,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -898,6 +954,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -942,6 +999,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -981,6 +1039,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
         let stream_start_time: u64 = start_time.0;
@@ -1008,6 +1067,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
         let stream_start_time: u64 = start_time.0;
@@ -1031,6 +1091,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
         let stream_start_time: u64 = start_time.0;
@@ -1058,6 +1119,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
         let stream_start_time: u64 = start_time.0;
@@ -1089,6 +1151,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -1131,6 +1194,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
 
@@ -1170,6 +1234,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10000 * NEAR);
 
@@ -1196,6 +1261,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10000 * NEAR);
 
@@ -1219,6 +1285,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10000 * NEAR);
 
@@ -1249,6 +1316,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10000 * NEAR);
 
@@ -1269,6 +1337,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10 * NEAR);
 
@@ -1293,6 +1362,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10 * NEAR);
 
@@ -1318,6 +1388,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10 * NEAR);
 
@@ -1335,7 +1406,6 @@ mod tests {
         );
     }
 
-
     #[test]
     #[should_panic(expected = "Cannot update: stream already started")]
     fn test_update_after_stream_start() {
@@ -1347,6 +1417,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10 * NEAR);
 
@@ -1375,6 +1446,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10 * NEAR);
 
@@ -1402,6 +1474,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
         let mut contract = Contract::new();
+        register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 10 * NEAR);
 
@@ -1453,5 +1526,10 @@ mod tests {
         builder.attached_deposit(amount);
         builder.block_timestamp(ts * 1e9 as u64);
         testing_env!(builder.build());
+    }
+
+    fn register_user(contract: &mut Contract, user_id: AccountId) {
+        set_context_with_balance(user_id.clone(), 1 * NEAR);
+        contract.storage_deposit(Some(user_id), Some(false));
     }
 }
