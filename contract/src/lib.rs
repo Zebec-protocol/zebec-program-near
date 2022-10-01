@@ -194,7 +194,7 @@ impl Contract {
         };
         if res {
             temp_stream.balance = 0;
-            self.streams.insert(&stream_id.into(), &temp_stream);
+            self.streams.insert(&stream_id.into(), temp_stream);
         }
         res
     }
