@@ -5,13 +5,29 @@ use near_sdk::{near_bindgen, AccountId};
 #[derive(Deserialize, Serialize, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct StreamView {
-    pub method_name: String,
     pub receiver: AccountId,
     pub stream_rate: U128,
     pub start: U64,
     pub end: U64,
     pub can_update: bool,
     pub can_cancel: bool,
+}
+
+// mainly for `ft_on_transfer`
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct UpdateStreamView {
+    pub stream_id: U64,
+    pub stream_rate: U128,
+    pub start: U64,
+    pub end: U64,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum FtStreamRequest {
+    Create(StreamView),
+    Update(UpdateStreamView),
 }
 
 #[near_bindgen]

@@ -77,6 +77,79 @@ impl Contract {
         return true;
     }
 
+    #[private]
+    fn ft_update_stream(
+        &mut self,
+        stream_id: U64,
+        sender: AccountId,
+        start: U64,
+        end: U64,
+        rate: U128,
+        update_amount: U128,
+    ) -> bool {
+        // convert to native u64
+        let id: u64 = stream_id.0;
+        let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
+
+        // get the stream
+        let mut stream = self.streams.get(&id).unwrap();
+
+        // check the stream can be udpated
+        require!(sender == stream.sender, "You are not authorized to update this stream");
+        require!(stream.can_update, "Stream cannot be updated");
+        require!(!stream.is_cancelled, "Stream has already been cancelled");
+
+        // convert id to native u128
+        let rate = u128::from(rate);
+        let start_time = u64::from(start);
+        let end_time = u64::from(end);
+        let amount = u128::from(update_amount);
+
+        // Check the start and end timestamp is valid
+        require!(
+            stream.start_time > current_timestamp,
+            "Cannot update: stream already started"
+        );
+        require!(
+            start_time < end_time,
+            "Start time should be less than end time"
+        );
+
+        if start_time != stream.start_time {
+            require!(
+                start_time >= current_timestamp,
+                "Start time cannot be in the past"
+            );
+        }
+        require!(rate > 0, "Rate cannot be zero");
+
+        // check the rate is valid
+        require!(rate < MAX_RATE, "Rate is too high");
+
+        stream.start_time = start_time;
+        stream.withdraw_time = start_time;
+        stream.end_time = end_time;
+        stream.rate = rate;
+
+        // calculate the balance is enough
+        let stream_duration = stream.end_time - stream.start_time;
+        let stream_amount = u128::from(stream_duration) * rate;
+
+        if stream_amount > stream.balance {
+            // check the amount send to the stream
+            require!(
+                amount == stream_amount - stream.balance,
+                "The amount provided is not enough for the stream"
+            );
+
+            stream.balance += amount;
+        }
+
+        self.streams.insert(&id, &stream);
+
+        return true;
+    }
+
     pub fn valid_ft_sender(account: AccountId) -> bool {
         // can only be called by stablecoin contract
         // @todo add valid stablecoins (from mainnet) address here later
@@ -103,27 +176,44 @@ impl FungibleTokenReceiver for Contract {
     ) -> PromiseOrValue<U128> {
         assert!(Self::valid_ft_sender(env::predecessor_account_id()));
         // msg contains the structure of the stream
-        let res: Result<StreamView, _> = serde_json::from_str(&msg);
+        let res: Result<FtStreamRequest, _> = serde_json::from_str(&msg);
         if res.is_err() {
             // if err then return everything back
             return PromiseOrValue::Value(amount);
         }
-        let _stream = res.unwrap();
-        require!(_stream.method_name == "create_stream".to_string());
-        if self.ft_create_stream(
-            _stream.stream_rate,
-            _stream.start,
-            _stream.end,
-            sender_id, // EOA 
-            amount,
-            _stream.receiver,
-            env::predecessor_account_id(),
-            _stream.can_cancel,
-            _stream.can_update,
-        ) {
-            return PromiseOrValue::Value(U128::from(0));
-        } else {
-            return PromiseOrValue::Value(amount);
+
+        match res.unwrap() {
+            FtStreamRequest::Create(_stream) => {
+                if self.ft_create_stream(
+                    _stream.stream_rate,
+                    _stream.start,
+                    _stream.end,
+                    sender_id, // EOA 
+                    amount,
+                    _stream.receiver,
+                    env::predecessor_account_id(),
+                    _stream.can_cancel,
+                    _stream.can_update,
+                ) {
+                    return PromiseOrValue::Value(U128::from(0));
+                } else {
+                    return PromiseOrValue::Value(amount);
+                }
+            }
+            FtStreamRequest::Update(_stream) => {
+                if self.ft_update_stream(
+                    _stream.stream_id,
+                    sender_id,
+                    _stream.start,
+                    _stream.end,
+                    _stream.stream_rate,
+                    amount,
+                ) {
+                    return PromiseOrValue::Value(U128::from(0));
+                } else {
+                    return PromiseOrValue::Value(amount);
+                }
+            }
         }
     }
 }
