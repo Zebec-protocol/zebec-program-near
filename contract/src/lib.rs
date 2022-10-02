@@ -218,52 +218,12 @@ impl Contract {
     }
 
     #[private]
-    pub fn internal_resolve_ft_withdraw(&mut self, stream_id: U64, revert_stream: &Stream) -> bool {
-        let res: bool = match env::promise_result(0) {
-            PromiseResult::NotReady => false,
-            PromiseResult::Successful(_) => true,
-            _ => false,
-        };
-        if !res {
-            self.streams.insert(&stream_id.into(), &revert_stream);
-        }
-        return res;
-    }
-
-    #[private]
-    pub fn internal_resolve_native_transfer(
+    pub fn internal_resolve_update_stream(
         &mut self,
         stream_id: U64,
-        revert_stream: &Stream,
+        revert_stream: &Stream
     ) -> bool {
         let res: bool = match env::promise_result(0) {
-            PromiseResult::NotReady => false,
-            PromiseResult::Successful(_) => true,
-            _ => false,
-        };
-        if !res {
-            self.streams.insert(&stream_id.into(), &revert_stream);
-        }
-        return res;
-    }
-
-    #[private]
-    pub fn internal_resolve_ft_claim(&mut self, stream_id: U64, revert_stream: &Stream) -> bool {
-        let res: bool = match env::promise_result(0) {
-            PromiseResult::NotReady => false,
-            PromiseResult::Successful(_) => true,
-            _ => false,
-        };
-        if !res {
-            self.streams.insert(&stream_id.into(), &revert_stream);
-        }
-        return res;
-    }
-
-    #[private]
-    pub fn internal_resolve_transfer(&mut self, stream_id: U64, revert_stream: &Stream) -> bool {
-        let res: bool = match env::promise_result(0) {
-            PromiseResult::NotReady => false,
             PromiseResult::Successful(_) => true,
             _ => false,
         };
@@ -342,7 +302,7 @@ impl Contract {
                     .transfer(remaining_balance)
                     .then(
                         Self::ext(env::current_account_id())
-                            .internal_resolve_native_transfer(stream_id, &revert_stream),
+                            .internal_resolve_update_stream(stream_id, &revert_stream),
                     )
                     .into()
             } else {
@@ -353,7 +313,7 @@ impl Contract {
                     .ft_transfer(receiver, remaining_balance.into(), None)
                     .then(
                         Self::ext(env::current_account_id())
-                            .internal_resolve_ft_withdraw(stream_id, &revert_stream),
+                            .internal_resolve_update_stream(stream_id, &revert_stream),
                     )
                     .into()
             }
@@ -402,7 +362,7 @@ impl Contract {
                     .transfer(withdrawal_amount)
                     .then(
                         Self::ext(env::current_account_id())
-                            .internal_resolve_native_transfer(stream_id, &revert_stream),
+                            .internal_resolve_update_stream(stream_id, &revert_stream),
                     )
                     .into()
             } else {
@@ -421,7 +381,7 @@ impl Contract {
                         // .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                         // .resolve_ft_withdraw(stream_id, temp_stream),
                         Self::ext(env::current_account_id())
-                            .internal_resolve_ft_withdraw(stream_id, &revert_stream),
+                            .internal_resolve_update_stream(stream_id, &revert_stream),
                     )
                     .into()
             }
@@ -557,7 +517,7 @@ impl Contract {
                 .then(Promise::new(receiver).transfer(receiver_amt))
                 .then(
                     Self::ext(env::current_account_id())
-                        .internal_resolve_native_transfer(stream_id, &revert_stream),
+                        .internal_resolve_update_stream(stream_id, &revert_stream),
                 )
                 .into()
         } else {
@@ -568,7 +528,7 @@ impl Contract {
                 .ft_transfer(receiver, receiver_amt.into(), None)
                 .then(
                     Self::ext(env::current_account_id())
-                        .internal_resolve_ft_withdraw(stream_id, &revert_stream),
+                        .internal_resolve_update_stream(stream_id, &revert_stream),
                 )
                 .into()
         }
@@ -600,7 +560,7 @@ impl Contract {
             .ft_transfer(temp_stream.sender.clone(), balance.into(), None)
             .then(
                 Self::ext(env::current_account_id())
-                    .internal_resolve_ft_claim(stream_id, &revert_stream),
+                    .internal_resolve_update_stream(stream_id, &revert_stream),
             )
             .into()
     }
