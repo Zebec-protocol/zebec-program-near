@@ -1,5 +1,7 @@
 use crate::*;
 
+use constants::NATIVE_NEAR_CONTRACT_ID;
+
 #[near_bindgen]
 impl Contract {
     // Create a stream struct from the given parameters
@@ -40,7 +42,7 @@ impl Contract {
 
         let near_token_id: AccountId;
         if is_native {
-            near_token_id = "near.testnet".parse().unwrap(); // this will be ignored for native stream
+            near_token_id = NATIVE_NEAR_CONTRACT_ID.parse().unwrap(); // this will be ignored for native stream
         } else {
             near_token_id = contract_id;
         }

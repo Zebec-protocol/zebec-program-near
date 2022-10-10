@@ -11,6 +11,7 @@ use near_sdk::utils::assert_one_yocto;
 mod calls;
 mod views;
 mod utils;
+mod constants;
 
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
 

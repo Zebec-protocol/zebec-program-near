@@ -1,7 +1,12 @@
 use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 
-use near_sdk::{serde_json, PromiseOrValue};
+use near_sdk::{serde_json, PromiseOrValue, AccountId};
+
+use constants::{
+    MAINNET_TOKEN_ACCOUNTS,
+    TESTNET_TOKEN_ACCOUNTS,
+};
 
 pub use crate::views::*;
 
@@ -57,13 +62,18 @@ impl Contract {
 
     pub fn valid_ft_sender(account: AccountId) -> bool {
         // can only be called by stablecoin contract
-        // @todo add valid stablecoins (from mainnet) address here later
-        let accounts: [AccountId; 2] = [
-            "usdn.testnet".parse().unwrap(),
-            "wrap.testnet".parse().unwrap(),
-        ];
-        // @todo: check if the accountID is in explicit (".near") or implicit format
-        accounts.contains(&account)
+
+        let req_account = account.as_str();
+
+        // This is for testing purposes only, testing requires compiling with feature="testnet" so
+        // that correct fungible token ids will be valid, this will not work on the mainnet
+        if cfg!(feature="testnet") {
+            return TESTNET_TOKEN_ACCOUNTS.contains(&req_account);
+        } else if cfg!(feature="mainnet") {
+            return MAINNET_TOKEN_ACCOUNTS.contains(&req_account);
+        } else {
+            env::panic_str("Error in compilation!");
+        }
     }
 }
 
