@@ -15,7 +15,8 @@ mod utils;
 mod constants;
 mod views;
 
-pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
+use constants::NATIVE_NEAR_CONTRACT_ID;
+use constants::MAX_RATE;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -104,7 +105,7 @@ impl Contract {
             can_cancel,
             can_update,
             true,
-            "near.testnet".parse().unwrap(),
+            NATIVE_NEAR_CONTRACT_ID.parse().unwrap(),
         );
 
         // check the amount send to the stream
