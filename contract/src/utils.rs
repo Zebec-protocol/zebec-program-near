@@ -25,6 +25,10 @@ impl Contract {
         let end_time: u64 = end.0;
 
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
+
+        // Check the receiver and sender are not same
+        require!(receiver != sender, "Sender and receiver cannot be Same");
+
         // Check the start and end timestamp is valid
         require!(
             start_time >= current_timestamp,

@@ -25,9 +25,6 @@ impl Contract {
         can_cancel: bool,
         can_update: bool,
     ) -> bool {
-        // Check the receiver and sender are not same
-        require!(receiver != sender, "Sender and receiver cannot be Same");
-
         let params_key = self.current_id;
 
         let stream: Stream = self.validate_stream(
