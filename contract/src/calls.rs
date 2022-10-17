@@ -68,9 +68,9 @@ impl Contract {
         // This is for testing purposes only, testing requires compiling with feature="testnet" so
         // that correct fungible token ids will be valid, this will not work on the mainnet
         if cfg!(feature="testnet") {
-            return TESTNET_TOKEN_ACCOUNTS.contains(&req_account);
+            TESTNET_TOKEN_ACCOUNTS.contains(&req_account)
         } else if cfg!(feature="mainnet") {
-            return MAINNET_TOKEN_ACCOUNTS.contains(&req_account);
+            MAINNET_TOKEN_ACCOUNTS.contains(&req_account)
         } else {
             env::panic_str("Error in compilation!");
         }
