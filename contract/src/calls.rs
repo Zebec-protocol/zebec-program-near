@@ -25,6 +25,10 @@ impl Contract {
         can_cancel: bool,
         can_update: bool,
     ) -> bool {
+        // storage staking part 
+        let initial_storage_usage = env::storage_usage();
+        let sender_account = sender.clone();
+
         let params_key = self.current_id;
 
         let stream: Stream = self.validate_stream(
@@ -48,6 +52,17 @@ impl Contract {
 
         // Save the stream
         self.streams.insert(&params_key, &stream);
+        
+        // Verify that the user has enough balance to cover for storage used
+        let storage_balance = self.accounts.get(&sender_account).unwrap();
+        let final_storage_usage = env::storage_usage();
+        let required_storage_balance =
+            (final_storage_usage - initial_storage_usage) as Balance * env::storage_byte_cost();
+
+        require!(
+            storage_balance.available >= required_storage_balance.into(),
+            format!("Deposit more storage balance!, {}", required_storage_balance),
+        );
 
         // Update the global stream count for next stream
         self.current_id += 1;
@@ -83,6 +98,9 @@ impl FungibleTokenReceiver for Contract {
         msg: String,
     ) -> PromiseOrValue<U128> {
         assert!(Self::valid_ft_sender(env::predecessor_account_id()), "Invalid or unknown fungible token used");
+
+        // checks that the sender_id is registered for staking storage 
+        require!(self.accounts.get(&sender_id).is_some(), "Sender account not registered!");
         // msg contains the structure of the stream
         let res: Result<StreamView, _> = serde_json::from_str(&msg);
         if res.is_err() {
