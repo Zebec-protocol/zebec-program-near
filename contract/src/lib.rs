@@ -223,6 +223,32 @@ impl Contract {
         res
     }
 
+    #[private]
+    pub fn internal_resolve_withdraw_stream(
+        &mut self,
+        stream_id: U64,
+
+        // Values to revert back in case of failure
+        withdrawal_amount: U128,
+        withdraw_time: U64,
+    ) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if !res {
+            let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
+
+            // In case of failure revert the withdrawn_amount and withdraw_time
+            temp_stream.balance += withdrawal_amount.0;
+            if withdraw_time.0 < temp_stream.withdraw_time {
+                temp_stream.withdraw_time = withdraw_time.0;
+            }
+            self.streams.insert(&stream_id.into(), &temp_stream);
+        }
+        res
+    }
+
     #[payable]
     pub fn withdraw(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
         // convert id to native u64
@@ -232,7 +258,6 @@ impl Contract {
 
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
-        let revert_stream = temp_stream.clone();
 
         // Check 1 yocto token for ft_token call
         if !temp_stream.is_native {
@@ -289,15 +314,23 @@ impl Contract {
             // Transfer tokens to the sender
             let receiver = temp_stream.sender.clone();
 
+            // Values to revert in case of failure to transfer the tokens
+            let withdrawal_amount_revert = U128::from(remaining_balance);
+            let withdrawal_time_revert = U64::from(temp_stream.withdraw_time); // withdrawal_time is not changed but the callback function requires it
+
             if temp_stream.is_native {
                 self.streams.insert(&stream_id.into(), &temp_stream);
 
                 // result is not in the current block, confirmation is in next block
                 Promise::new(receiver)
                     .transfer(remaining_balance)
-                    .then(
+                    .then( 
                         Self::ext(env::current_account_id())
-                            .internal_resolve_update_stream(stream_id, &revert_stream),
+                            .internal_resolve_withdraw_stream(
+                                stream_id,
+                                withdrawal_amount_revert,
+                                withdrawal_time_revert
+                            ),
                     )
                     .into()
             } else {
@@ -308,7 +341,11 @@ impl Contract {
                     .ft_transfer(receiver, remaining_balance.into(), None)
                     .then(
                         Self::ext(env::current_account_id())
-                            .internal_resolve_update_stream(stream_id, &revert_stream),
+                            .internal_resolve_withdraw_stream(
+                                stream_id,
+                                withdrawal_amount_revert,
+                                withdrawal_time_revert
+                            ),
                     )
                     .into()
             }
@@ -346,24 +383,30 @@ impl Contract {
             let receiver = temp_stream.receiver.clone();
             require!(withdrawal_amount > 0, "There is no balance to withdraw");
 
+            // Values to revert incase the transfer fails
+            let withdrawal_amount_revert = U128::from(withdrawal_amount);
+            let withdrawal_time_revert = U64::from(withdraw_time);
+
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
 
-            if temp_stream.is_native {
-                self.streams.insert(&stream_id.into(), &temp_stream);
+            // Update the stream
+            self.streams.insert(&stream_id.into(), &temp_stream);
 
+            if temp_stream.is_native {
                 Promise::new(receiver)
                     .transfer(withdrawal_amount)
                     .then(
                         Self::ext(env::current_account_id())
-                            .internal_resolve_update_stream(stream_id, &revert_stream),
+                            .internal_resolve_withdraw_stream(
+                                stream_id,
+                                withdrawal_amount_revert,
+                                withdrawal_time_revert
+                            ),
                     )
                     .into()
             } else {
-                // update state
-                self.streams.insert(&stream_id.into(), &temp_stream);
-
                 // NEP141 : ft_transfer()
                 // require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER, "More gas is required");
                 // log!("{:?}", temp_stream);
@@ -376,7 +419,11 @@ impl Contract {
                         // .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                         // .resolve_ft_withdraw(stream_id, temp_stream),
                         Self::ext(env::current_account_id())
-                            .internal_resolve_update_stream(stream_id, &revert_stream),
+                            .internal_resolve_withdraw_stream(
+                                stream_id,
+                                withdrawal_amount_revert,
+                                withdrawal_time_revert
+                            ),
                     )
                     .into()
             }
@@ -473,8 +520,6 @@ impl Contract {
             assert_one_yocto();
         }
 
-        let revert_stream = temp_stream.clone();
-
         // check that the stream can be cancelled
         require!(temp_stream.can_cancel, "Stream cannot be cancelled");
 
@@ -492,7 +537,6 @@ impl Contract {
         require!(!temp_stream.is_cancelled, "already cancelled!");
 
         // Amounts to refund to the sender and the receiver
-        let sender_amt: u128;
         let receiver_amt: u128;
 
         // Calculate the amount to refund to the receiver
@@ -506,45 +550,84 @@ impl Contract {
                 u128::from(current_timestamp - temp_stream.withdraw_time) * temp_stream.rate;
         }
 
-        // Calculate the amount to refund to the sender
-        sender_amt = temp_stream.balance - receiver_amt;
-
-        // Refund the amounts to the sender and the receiver respectively
-        let sender = temp_stream.sender.clone();
         let receiver = temp_stream.receiver.clone();
 
         // Update the stream balance and save
-        temp_stream.balance = sender_amt;
+        temp_stream.balance -= receiver_amt;
         temp_stream.is_cancelled = true;
-        // self.streams.insert(&id, &temp_stream);
+
+        // Values to revert in case the transfer fails
+        let revert_balance = U128::from(receiver_amt);
+
+        // Update the stream
+        self.streams.insert(&id, &temp_stream);
 
         // log
         log!("Stream cancelled: {}", temp_stream.id);
 
         if temp_stream.is_native {
-            temp_stream.balance = 0;
-            self.streams.insert(&id, &temp_stream);
-            Promise::new(sender)
-                .transfer(sender_amt)
-                .then(Promise::new(receiver).transfer(receiver_amt))
+            Promise::new(receiver)
+                .transfer(receiver_amt)
                 .then(
                     Self::ext(env::current_account_id())
-                        .internal_resolve_update_stream(stream_id, &revert_stream),
+                        .internal_resolve_cancel_stream(stream_id, revert_balance),
                 )
                 .into()
         } else {
-            // update state first
-            self.streams.insert(&id, &temp_stream);
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
                 .with_attached_deposit(1)
                 .ft_transfer(receiver, receiver_amt.into(), None)
                 .then(
                     Self::ext(env::current_account_id())
-                        .internal_resolve_update_stream(stream_id, &revert_stream),
+                        .internal_resolve_cancel_stream(stream_id, revert_balance),
                 )
                 .into()
         }
     }
+
+    #[private]
+    pub fn internal_resolve_cancel_stream(
+        &mut self,
+        stream_id: U64,
+        withdrawal_amount: U128,
+    ) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if !res {
+            let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
+
+            // In case of failure revert the withdrawal_amount and the is_cancelled state
+            temp_stream.balance += withdrawal_amount.0;
+            temp_stream.is_cancelled = false;
+
+            self.streams.insert(&stream_id.into(), &temp_stream);
+        }
+        res
+    }
+
+    #[private]
+    pub fn internal_resolve_claim_stream(
+        &mut self,
+        stream_id: U64,
+        withdrawal_amount: U128,
+    ) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if !res {
+            let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
+
+            // In case of failure revert the withdrawal_amount and the is_cancelled state
+            temp_stream.balance += withdrawal_amount.0;
+
+            self.streams.insert(&stream_id.into(), &temp_stream);
+        }
+        res
+    }
+
 
     // allows the sender to withdraw funds if the stream is_cancelled.
     pub fn ft_claim_sender(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
@@ -554,7 +637,12 @@ impl Contract {
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
 
-        let revert_stream = temp_stream.clone();
+        // Needs one yocto to transfer the ft tokens
+        if !temp_stream.is_native {
+            assert_one_yocto();
+        }
+
+        // Only the sender can claim
         require!(
             temp_stream.sender == env::predecessor_account_id(),
             "not sender"
@@ -567,14 +655,28 @@ impl Contract {
         temp_stream.balance = 0;
         self.streams.insert(&stream_id.into(), &temp_stream);
 
-        ext_ft_transfer::ext(temp_stream.contract_id.clone())
-            .with_attached_deposit(1)
-            .ft_transfer(temp_stream.sender.clone(), balance.into(), None)
-            .then(
-                Self::ext(env::current_account_id())
-                    .internal_resolve_update_stream(stream_id, &revert_stream),
-            )
-            .into()
+        let sender = temp_stream.sender.clone();
+
+        let revert_balance = U128::from(balance);
+
+        if temp_stream.is_native {
+            Promise::new(sender)
+                .transfer(balance.into())
+                .then(
+                    Self::ext(env::current_account_id())
+                        .internal_resolve_claim_stream(stream_id, revert_balance),
+                )
+                .into()
+        } else {
+            ext_ft_transfer::ext(temp_stream.contract_id.clone())
+                .with_attached_deposit(1)
+                .ft_transfer(sender, balance.into(), None)
+                .then(
+                    Self::ext(env::current_account_id())
+                        .internal_resolve_claim_stream(stream_id, revert_balance),
+                )
+                .into()
+        }
     }
 }
 
