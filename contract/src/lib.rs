@@ -47,6 +47,7 @@ pub struct Stream {
     can_update: bool,
     can_cancel: bool,
     is_native: bool,
+    locked: bool, // A mutex to block any exectuion before callback completes
 }
 
 #[ext_contract(ext_ft_transfer)]
@@ -151,6 +152,7 @@ impl Contract {
 
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
+        require!(!stream.locked, "Some other operation is happening in the stream");
 
         require!(
             env::predecessor_account_id() == stream.sender,
@@ -208,22 +210,6 @@ impl Contract {
     }
 
     #[private]
-    pub fn internal_resolve_update_stream(
-        &mut self,
-        stream_id: U64,
-        revert_stream: &Stream
-    ) -> bool {
-        let res: bool = match env::promise_result(0) {
-            PromiseResult::Successful(_) => true,
-            _ => false,
-        };
-        if !res {
-            self.streams.insert(&stream_id.into(), &revert_stream);
-        }
-        res
-    }
-
-    #[private]
     pub fn internal_resolve_withdraw_stream(
         &mut self,
         stream_id: U64,
@@ -236,16 +222,16 @@ impl Contract {
             PromiseResult::Successful(_) => true,
             _ => false,
         };
+        let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
+        temp_stream.locked=false;
         if !res {
-            let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
-
             // In case of failure revert the withdrawn_amount and withdraw_time
             temp_stream.balance += withdrawal_amount.0;
             if withdraw_time.0 < temp_stream.withdraw_time {
                 temp_stream.withdraw_time = withdraw_time.0;
             }
-            self.streams.insert(&stream_id.into(), &temp_stream);
         }
+        self.streams.insert(&stream_id.into(), &temp_stream);
         res
     }
 
@@ -258,6 +244,7 @@ impl Contract {
 
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
+        require!(!temp_stream.locked, "Some other operation is happening in the stream");
 
         // Check 1 yocto token for ft_token call
         if !temp_stream.is_native {
@@ -311,8 +298,10 @@ impl Contract {
 
             // Update stream and save
             temp_stream.balance -= remaining_balance;
+            temp_stream.locked = true;
+
             // Transfer tokens to the sender
-            let receiver = temp_stream.sender.clone();
+            let sender = temp_stream.sender.clone();
 
             // Values to revert in case of failure to transfer the tokens
             let withdrawal_amount_revert = U128::from(remaining_balance);
@@ -322,7 +311,7 @@ impl Contract {
                 self.streams.insert(&stream_id.into(), &temp_stream);
 
                 // result is not in the current block, confirmation is in next block
-                Promise::new(receiver)
+                Promise::new(sender)
                     .transfer(remaining_balance)
                     .then( 
                         Self::ext(env::current_account_id())
@@ -338,7 +327,7 @@ impl Contract {
                 // NEP141 : ft_transfer()
                 ext_ft_transfer::ext(temp_stream.contract_id.clone())
                     .with_attached_deposit(1)
-                    .ft_transfer(receiver, remaining_balance.into(), None)
+                    .ft_transfer(sender, remaining_balance.into(), None)
                     .then(
                         Self::ext(env::current_account_id())
                             .internal_resolve_withdraw_stream(
@@ -390,6 +379,7 @@ impl Contract {
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
+            temp_stream.locked = true;
 
             // Update the stream
             self.streams.insert(&stream_id.into(), &temp_stream);
@@ -438,6 +428,7 @@ impl Contract {
 
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
+        require!(!stream.locked, "Some other operation is happening in the stream");
 
         // Only the sender can pause the stream
         require!(
@@ -473,6 +464,7 @@ impl Contract {
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
+        require!(!stream.locked, "Some other operation is happening in the stream");
 
         // Only the sender can resume the stream
         require!(
@@ -514,6 +506,7 @@ impl Contract {
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
+        require!(!temp_stream.locked, "Some other operation is happening in the stream");
 
         // Check 1 yocto token for ft_token call
         if !temp_stream.is_native {
@@ -555,6 +548,7 @@ impl Contract {
         // Update the stream balance and save
         temp_stream.balance -= receiver_amt;
         temp_stream.is_cancelled = true;
+        temp_stream.locked = true;
 
         // Values to revert in case the transfer fails
         let revert_balance = U128::from(receiver_amt);
@@ -595,15 +589,14 @@ impl Contract {
             PromiseResult::Successful(_) => true,
             _ => false,
         };
+        let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
+        temp_stream.locked = false;
         if !res {
-            let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
-
             // In case of failure revert the withdrawal_amount and the is_cancelled state
             temp_stream.balance += withdrawal_amount.0;
             temp_stream.is_cancelled = false;
-
-            self.streams.insert(&stream_id.into(), &temp_stream);
         }
+        self.streams.insert(&stream_id.into(), &temp_stream);
         res
     }
 
@@ -617,14 +610,13 @@ impl Contract {
             PromiseResult::Successful(_) => true,
             _ => false,
         };
+        let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
+        temp_stream.locked = false;
         if !res {
-            let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
-
-            // In case of failure revert the withdrawal_amount and the is_cancelled state
+            // In case of failure revert the withdrawal_amount
             temp_stream.balance += withdrawal_amount.0;
-
-            self.streams.insert(&stream_id.into(), &temp_stream);
         }
+        self.streams.insert(&stream_id.into(), &temp_stream);
         res
     }
 
@@ -636,6 +628,7 @@ impl Contract {
 
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
+        require!(!temp_stream.locked, "Some other operation is happening in the stream");
 
         // Needs one yocto to transfer the ft tokens
         if !temp_stream.is_native {
@@ -653,10 +646,10 @@ impl Contract {
 
         // update stream state
         temp_stream.balance = 0;
+        temp_stream.locked = true;
         self.streams.insert(&stream_id.into(), &temp_stream);
 
         let sender = temp_stream.sender.clone();
-
         let revert_balance = U128::from(balance);
 
         if temp_stream.is_native {
@@ -677,6 +670,21 @@ impl Contract {
                 )
                 .into()
         }
+    }
+
+    // method only to facilitate unit tests
+    // streams cannot be unlocked in unit tests because callbacks don't work
+    #[cfg(test)]
+    pub fn unlock(&mut self, stream_id:U64) -> bool {
+        // convert id to native u64
+        let id: u64 = stream_id.0;
+
+        // Get the stream
+        let mut temp_stream = self.streams.get(&id).unwrap();
+        temp_stream.locked = false;
+        self.streams.insert(&stream_id.into(), &temp_stream);
+
+        return true
     }
 }
 
@@ -1028,6 +1036,7 @@ mod tests {
         // 3. sender call withdraw after stream has ended (action)
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
         contract.withdraw(stream_id);
+        contract.unlock(stream_id);
 
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
@@ -1072,6 +1081,7 @@ mod tests {
         // 3. sender call withdraw after stream has ended (action)
         set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
         contract.withdraw(stream_id);
+        contract.unlock(stream_id);
 
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
@@ -1080,6 +1090,7 @@ mod tests {
         // 3. receiver call withdraw
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 25);
         contract.withdraw(stream_id);
+        contract.unlock(stream_id);
 
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
@@ -1117,6 +1128,7 @@ mod tests {
         // 3. receiver call withdraw after stream has ended (action)
         set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
         contract.withdraw(stream_id);
+        contract.unlock(stream_id);
 
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
@@ -1201,6 +1213,7 @@ mod tests {
         // pause the stream
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
         contract.cancel(stream_id);
+        contract.unlock(stream_id);
 
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
         contract.pause(stream_id);
@@ -1233,6 +1246,7 @@ mod tests {
         // cancel the stream
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
         contract.cancel(stream_id);
+        contract.unlock(stream_id);
 
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 13);
         contract.resume(stream_id);
@@ -1269,6 +1283,7 @@ mod tests {
         // 3. sender call withdraw after stream has ended (action)
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
         contract.withdraw(stream_id);
+        contract.unlock(stream_id);
 
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
@@ -1309,6 +1324,7 @@ mod tests {
         // 3. sender call withdraw after stream has ended (action)
         set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
         contract.withdraw(stream_id);
+        contract.unlock(stream_id);
 
         // 4. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
@@ -1447,7 +1463,7 @@ mod tests {
 
         // 3. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
-        assert_eq!(internal_balance, 0);
+        assert_eq!(internal_balance, 9 * NEAR);
     }
 
     #[test]
@@ -1472,7 +1488,7 @@ mod tests {
 
         // 3. assert internal balance
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
-        assert_eq!(internal_balance, 0);
+        assert_eq!(internal_balance, 10 * NEAR);
     }
 
     #[test]
