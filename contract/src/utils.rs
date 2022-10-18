@@ -68,6 +68,7 @@ impl Contract {
             can_cancel,
             can_update,
             is_native,
+            locked: false,
         }
     }
 
