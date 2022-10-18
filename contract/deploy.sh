@@ -1,6 +1,6 @@
 #!/bin/sh
 
-./build.sh
+./build_testnet.sh
 
 if [ $? -ne 0 ]; then
   echo ">> Error building contract"
