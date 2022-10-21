@@ -145,7 +145,7 @@ impl StorageManagement for Contract {
 
         self.accounts.remove(&account_id);
 
-        assert!(available_amount > 0, "Amount less than 0");
+        assert!(available_amount > 0, "amount cannot be less than zero");
         Promise::new(account_id.clone()).transfer(available_amount);
         true
     }
@@ -197,7 +197,7 @@ mod tests {
 
         let res = contract.storage_deposit(Some(caller.clone()), Some(false));
         assert!(res.total == U128(deposit_amount));
-        assert!(res.available < U128(deposit_amount));
+        assert!(res.available == U128(deposit_amount - contract.account_storage_usage as Balance * env::storage_byte_cost()));
     }
 
     #[test]
@@ -209,10 +209,10 @@ mod tests {
         let mut contract = Contract::new();
         contract.storage_deposit(Some(caller.clone()), Some(false));
 
-        set_context_with_balance(caller, 1);
+        set_context_with_balance(caller.clone(), 1);
         let res = contract.storage_withdraw(None);
-        // avaialable balance should be equal to 0
-        assert!(res.available.0 == 0);
+        let ret = contract.storage_balance_of(caller).unwrap();
+        assert!(res.available.0 == ret.available.0);
     }
 
     #[test]
