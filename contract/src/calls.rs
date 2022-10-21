@@ -29,7 +29,6 @@ impl Contract {
         let initial_storage_usage = env::storage_usage();
         let sender_account = sender.clone();
 
-
         // Check the receiver and sender are not same
         require!(receiver != sender, "Sender and receiver cannot be Same");
 
@@ -54,7 +53,7 @@ impl Contract {
             "The amount provided doesn't matches the stream"
         );
 
-        // Save the streamq
+        // Save the stream
         self.streams.insert(&params_key, &stream);
         
         // Verify that the user has enough balance to cover for storage used
