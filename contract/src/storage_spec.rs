@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn initializes() {
-        let contract = Contract::new();
+        let contract = Contract::new(accounts(2));
         assert_eq!(contract.current_id, 1);
         assert_eq!(contract.streams.len(), 0);
     }
@@ -194,7 +194,7 @@ mod tests {
         let caller = accounts(0); // alice
         let deposit_amount = NEAR / 100;
         set_context_with_balance(caller.clone(), deposit_amount);
-        let mut contract = Contract::new();
+        let mut contract = Contract::new(accounts(2));
 
         let res = contract.storage_deposit(Some(caller.clone()), Some(false));
         assert!(res.total == U128(deposit_amount));
@@ -207,7 +207,7 @@ mod tests {
         let caller = accounts(0); // alice
         let deposit_amount = NEAR / 100;
         set_context_with_balance(caller.clone(), deposit_amount);
-        let mut contract = Contract::new();
+        let mut contract = Contract::new(accounts(2));
         contract.storage_deposit(Some(caller.clone()), Some(false));
 
         set_context_with_balance(caller.clone(), 1);
@@ -222,7 +222,7 @@ mod tests {
         let caller = accounts(0); // alice
         let deposit_amount = NEAR / 100;
         set_context_with_balance(caller.clone(), deposit_amount);
-        let mut contract = Contract::new();
+        let mut contract = Contract::new(accounts(2));
         contract.storage_deposit(Some(caller.clone()), Some(false));
 
         set_context_with_balance(caller, 1);
@@ -234,7 +234,7 @@ mod tests {
         let caller = accounts(0);
         let deposit_amount = NEAR / 100;
         set_context_with_balance(caller.clone(), deposit_amount);
-        let mut contract = Contract::new();
+        let mut contract = Contract::new(accounts(2));
         contract.storage_deposit(Some(caller.clone()), Some(false));
         set_context_with_balance(caller, 1);
         let res = contract.storage_unregister(Some(false));
