@@ -145,7 +145,7 @@ impl StorageManagement for Contract {
 
         self.accounts.remove(&account_id);
 
-        if (available_amount > 0) {
+        if available_amount > 0 {
             Promise::new(account_id.clone()).transfer(available_amount);
         }
         true

@@ -44,12 +44,46 @@ impl Contract {
 
         self.streams
             .keys()
-            // skip to start
-            .skip(start as usize)
-            // take the first `limit` elements in the vec
-            .take(limit.unwrap_or(U64(50)).0 as usize)
             .map(|id| self.streams.get(&id).unwrap())
             .filter(|stream| stream.sender == user_id)
+            .skip(start as usize)
+            .take(limit.unwrap_or(U64(50)).0 as usize)
+            .collect()
+    }
+
+    pub fn get_streams_by_user_count(&self, user_id: AccountId) -> U64 {
+        let count = self.streams
+            .keys()
+            .map(|id| self.streams.get(&id).unwrap())
+            .filter(|stream| stream.sender == user_id)
+            .count();
+        U64::from(count as u64)
+    }
+
+    pub fn get_incoming_by_user_count(&self, user_id: AccountId) -> U64 {
+        let count = self.streams
+            .keys()
+            .map(|id| self.streams.get(&id).unwrap())
+            .filter(|stream| stream.receiver == user_id)
+            .count();
+        U64::from(count as u64)
+    }
+
+
+    pub fn get_incoming_by_user(
+        &self,
+        user_id: AccountId,
+        from_index: Option<U128>,
+        limit: Option<U64>,
+    ) -> Vec<Stream> {
+        let start = u128::from(from_index.unwrap_or(U128(0)));
+
+        self.streams
+            .keys()
+            .map(|id| self.streams.get(&id).unwrap())
+            .filter(|stream| stream.receiver == user_id)
+            .skip(start as usize)
+            .take(limit.unwrap_or(U64(50)).0 as usize)
             .collect()
     }
 }
