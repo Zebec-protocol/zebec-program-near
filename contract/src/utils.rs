@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{*, constants::FEE_BPS_DIVISOR};
 
 use constants::NATIVE_NEAR_CONTRACT_ID;
 
@@ -75,12 +75,61 @@ impl Contract {
         }
     }
 
+
+    // ------------------- owner functions --------------------------------------
+    pub fn assert_owner(&self) {
+        assert_eq!(env::predecessor_account_id(), self.owner_id, "Not owner");
+    }
+
+    /// Get the owner of this contract.
+    pub fn get_owner(&self) -> AccountId {
+        self.owner_id.clone()
+    }
+
+    pub fn assert_manager(&self) {
+        require!(env::predecessor_account_id() == self.manager_id, "Not Manager");
+    }
+    
+    /// Change owner. Only can be called by owner.
+    #[payable]
+    pub fn set_owner(&mut self, owner_id: AccountId) {
+        assert_one_yocto();
+        self.assert_owner();
+        self.owner_id = owner_id;
+    }
+
+    /// Extend whitelisted tokens with new tokens. Only can be called by owner.
+    #[payable]
+    pub fn extend_whitelisted_tokens(&mut self, tokens: Vec<AccountId>) {
+        assert_one_yocto();
+        self.assert_owner();
+        for token in tokens {
+            self.whitelisted_tokens.insert(&token);
+        }
+    }
+
+    /// Remove whitelisted token. Only can be called by owner.
+    #[payable]
+    pub fn remove_whitelisted_tokens(&mut self, tokens: Vec<AccountId>) {
+        assert_one_yocto();
+        self.assert_owner();
+        for token in tokens {
+            let exist = self.whitelisted_tokens.remove(&token);
+            assert!(exist, "Token not in the list");
+        }
+    }
+    
+    // view whitelisted tokens
+    pub fn get_whitelisted_tokens(&self) -> Vec<AccountId> {
+        self.whitelisted_tokens.to_vec()
+    }
+
+    /// delete streams. Only can be called by manager.
+    #[payable]
     pub fn delete_streams(&mut self, stream_ids: Vec<U64>) {
-        require!(
-            env::predecessor_account_id() == self.manager,
-            "only the manager can delete streams"
-        );
-        for stream_id in stream_ids {
+        assert_one_yocto();
+        self.assert_manager();
+        for stream_id in stream_ids  {
             self.delete_stream(stream_id);
         }
     }
@@ -97,6 +146,43 @@ impl Contract {
         );
         self.streams.remove(&stream.id);
     }
+
+    // assert_one_yocto()
+    #[payable]
+    pub fn change_fee_rate(&mut self, new_rate: U64) {
+        assert_one_yocto();
+        self.assert_owner();
+        require!(new_rate.0 <= self.max_fee_rate, "Rate cannot be greater than max fee_rate");
+        self.fee_rate = new_rate.0;
+    }
+    
+    //assert_one_yocto()
+    #[payable]
+    pub fn change_fee_receiver(&mut self, new_receiver: AccountId) {
+        assert_one_yocto();
+        self.assert_owner();
+        self.fee_receiver = new_receiver;
+    }
+    
+    // claim accumulated fee by fee_receiver
+    #[payable]
+    pub fn claim_fee(&mut self) {
+        assert_one_yocto();
+        require!(env::predecessor_account_id() == self.fee_receiver, "Not fee receiver!");
+        
+        // self.accumulated_fee
+    }
+
+    pub fn calculate_fee_amount(&self, _amount:u128) -> u128 {
+         // @todo check for overflow, caution : mulltiplication before division and subtraction
+        let fee_amount = _amount  * u128::from(self.fee_rate) / u128::from(FEE_BPS_DIVISOR);
+        return fee_amount;
+    }
+
+    pub fn valid_ft_sender(&self, account: AccountId) -> bool {
+        // can only be called by fungible token contract
+        self.whitelisted_tokens.contains(&account)
+    }
 }
 
 #[cfg(test)]
@@ -111,7 +197,7 @@ mod tests {
 
     #[test]
     fn initializes() {
-        let contract = Contract::new(accounts(2));
+        let contract = Contract::new(accounts(2), accounts(3), accounts(4), U64::from(25), U64::from(200)); // "charlie", "danny", "eugene"
         assert_eq!(contract.current_id, 1);
         assert_eq!(contract.streams.len(), 0);
     }
@@ -145,7 +231,7 @@ mod tests {
         let sender = &accounts(0); // alice
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
-        let mut contract = Contract::new(accounts(2)); // charlie
+        let mut contract = Contract::new(accounts(2), accounts(3), accounts(4), U64::from(25), U64::from(200)); // "charlie", "danny", "eugene"
         register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
@@ -173,7 +259,7 @@ mod tests {
         contract.unlock(stream_id);
 
         // charlie as manager
-        set_context_with_balance_timestamp(accounts(2), 1, stream_start_time + 11);
+        set_context_with_balance_timestamp(accounts(3), 1, stream_start_time + 11);
         let stream_ids: Vec<U64> = vec![stream_id];
         contract.delete_streams(stream_ids);
     }

@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn initializes() {
-        let contract = Contract::new(accounts(2));
+        let contract = Contract::new(accounts(2), accounts(3), accounts(4), U64::from(25), U64::from(200)); // "charlie", "danny", "eugene"
         assert_eq!(contract.current_id, 1);
         assert_eq!(contract.streams.len(), 0);
     }
@@ -125,7 +125,7 @@ mod tests {
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
 
-        let mut contract = Contract::new(accounts(2)); // charlie is manager
+        let mut contract = Contract::new(accounts(2), accounts(3), accounts(4), U64::from(25), U64::from(200)); // "charlie", "danny", "eugene"
         register_user(&mut contract, sender.clone());
 
         set_context_with_balance(sender.clone(), 172800 * NEAR);

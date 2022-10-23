@@ -3,8 +3,6 @@ use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 
 use near_sdk::{serde_json, AccountId, PromiseOrValue};
 
-use constants::{MAINNET_TOKEN_ACCOUNTS, TESTNET_TOKEN_ACCOUNTS};
-
 pub use crate::views::*;
 
 #[near_bindgen]
@@ -78,21 +76,6 @@ impl Contract {
         true
     }
 
-    pub fn valid_ft_sender(account: AccountId) -> bool {
-        // can only be called by stablecoin contract
-
-        let req_account = account.as_str();
-
-        // This is for testing purposes only, testing requires compiling with feature="testnet" so
-        // that correct fungible token ids will be valid, this will not work on the mainnet
-        if cfg!(feature = "testnet") {
-            TESTNET_TOKEN_ACCOUNTS.contains(&req_account)
-        } else if cfg!(feature = "mainnet") {
-            MAINNET_TOKEN_ACCOUNTS.contains(&req_account)
-        } else {
-            env::panic_str("Error in compilation!");
-        }
-    }
 }
 
 #[near_bindgen]
@@ -103,10 +86,8 @@ impl FungibleTokenReceiver for Contract {
         amount: U128,
         msg: String,
     ) -> PromiseOrValue<U128> {
-        assert!(
-            Self::valid_ft_sender(env::predecessor_account_id()),
-            "Invalid or unknown fungible token used"
-        );
+
+        require!(self.valid_ft_sender(env::predecessor_account_id()), "Token not supported!");
 
         // checks that the sender_id is registered for staking storage
         require!(
