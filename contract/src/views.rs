@@ -60,7 +60,7 @@ impl Contract {
         U64::from(count as u64)
     }
 
-    pub fn get_incoming_by_user_count(&self, user_id: AccountId) -> U64 {
+    pub fn get_incoming_streams_count(&self, user_id: AccountId) -> U64 {
         let count = self.streams
             .keys()
             .map(|id| self.streams.get(&id).unwrap())
@@ -70,7 +70,7 @@ impl Contract {
     }
 
 
-    pub fn get_incoming_by_user(
+    pub fn get_incoming_streams_for_user(
         &self,
         user_id: AccountId,
         from_index: Option<U128>,
