@@ -335,6 +335,7 @@ mod tests {
         // charlie as manager
         set_context_with_balance_timestamp(accounts(3), 1, stream_start_time + 11);
         let stream_ids: Vec<U64> = vec![stream_id];
+
         contract.delete_streams(stream_ids);
     }
 }

@@ -329,7 +329,7 @@ impl Contract {
             // Calculate the withdrawal amount
             let remaining_balance = temp_stream.balance - withdrawal_amount;
             require!(remaining_balance > 0, "Already withdrawn");
-
+         
             // Update stream and save
             temp_stream.balance -= remaining_balance;
             temp_stream.locked = true;
@@ -417,7 +417,6 @@ impl Contract {
 
             // Update the stream
             self.streams.insert(&stream_id.into(), &temp_stream);
-
 
             // Calculate fee amount
             let fee_amount = self.calculate_fee_amount(withdrawal_amount);
