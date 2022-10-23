@@ -10,13 +10,13 @@ use near_sdk::{
 };
 
 mod calls;
+mod constants;
 mod storage_spec;
 mod utils;
-mod constants;
 mod views;
 
-use constants::NATIVE_NEAR_CONTRACT_ID;
 use constants::MAX_RATE;
+use constants::NATIVE_NEAR_CONTRACT_ID;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -115,7 +115,6 @@ impl Contract {
         // Save the stream
         self.streams.insert(&params_key, &stream);
 
-
         // Verify that the user has enough balance to cover for storage used
         let mut storage_balance = self.accounts.get(&env::predecessor_account_id()).unwrap();
         let final_storage_usage = env::storage_usage();
@@ -154,7 +153,10 @@ impl Contract {
 
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
-        require!(!stream.locked, "Some other operation is happening in the stream");
+        require!(
+            !stream.locked,
+            "Some other operation is happening in the stream"
+        );
 
         require!(
             env::predecessor_account_id() == stream.sender,
@@ -225,7 +227,7 @@ impl Contract {
             _ => false,
         };
         let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
-        temp_stream.locked=false;
+        temp_stream.locked = false;
         if !res {
             // In case of failure revert the withdrawn_amount and withdraw_time
             temp_stream.balance += withdrawal_amount.0;
@@ -246,7 +248,10 @@ impl Contract {
 
         // get the stream with id: stream_id
         let mut temp_stream = self.streams.get(&id).unwrap();
-        require!(!temp_stream.locked, "Some other operation is happening in the stream");
+        require!(
+            !temp_stream.locked,
+            "Some other operation is happening in the stream"
+        );
 
         // Check 1 yocto token for ft_token call
         if !temp_stream.is_native {
@@ -315,13 +320,12 @@ impl Contract {
                 // result is not in the current block, confirmation is in next block
                 Promise::new(sender)
                     .transfer(remaining_balance)
-                    .then( 
-                        Self::ext(env::current_account_id())
-                            .internal_resolve_withdraw_stream(
-                                stream_id,
-                                withdrawal_amount_revert,
-                                withdrawal_time_revert
-                            ),
+                    .then(
+                        Self::ext(env::current_account_id()).internal_resolve_withdraw_stream(
+                            stream_id,
+                            withdrawal_amount_revert,
+                            withdrawal_time_revert,
+                        ),
                     )
                     .into()
             } else {
@@ -331,12 +335,11 @@ impl Contract {
                     .with_attached_deposit(1)
                     .ft_transfer(sender, remaining_balance.into(), None)
                     .then(
-                        Self::ext(env::current_account_id())
-                            .internal_resolve_withdraw_stream(
-                                stream_id,
-                                withdrawal_amount_revert,
-                                withdrawal_time_revert
-                            ),
+                        Self::ext(env::current_account_id()).internal_resolve_withdraw_stream(
+                            stream_id,
+                            withdrawal_amount_revert,
+                            withdrawal_time_revert,
+                        ),
                     )
                     .into()
             }
@@ -390,12 +393,11 @@ impl Contract {
                 Promise::new(receiver)
                     .transfer(withdrawal_amount)
                     .then(
-                        Self::ext(env::current_account_id())
-                            .internal_resolve_withdraw_stream(
-                                stream_id,
-                                withdrawal_amount_revert,
-                                withdrawal_time_revert
-                            ),
+                        Self::ext(env::current_account_id()).internal_resolve_withdraw_stream(
+                            stream_id,
+                            withdrawal_amount_revert,
+                            withdrawal_time_revert,
+                        ),
                     )
                     .into()
             } else {
@@ -410,12 +412,11 @@ impl Contract {
                         // ext_self::ext(env::current_account_id())
                         // .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                         // .resolve_ft_withdraw(stream_id, temp_stream),
-                        Self::ext(env::current_account_id())
-                            .internal_resolve_withdraw_stream(
-                                stream_id,
-                                withdrawal_amount_revert,
-                                withdrawal_time_revert
-                            ),
+                        Self::ext(env::current_account_id()).internal_resolve_withdraw_stream(
+                            stream_id,
+                            withdrawal_amount_revert,
+                            withdrawal_time_revert,
+                        ),
                     )
                     .into()
             }
@@ -430,7 +431,10 @@ impl Contract {
 
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
-        require!(!stream.locked, "Some other operation is happening in the stream");
+        require!(
+            !stream.locked,
+            "Some other operation is happening in the stream"
+        );
 
         // Only the sender can pause the stream
         require!(
@@ -466,7 +470,10 @@ impl Contract {
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
-        require!(!stream.locked, "Some other operation is happening in the stream");
+        require!(
+            !stream.locked,
+            "Some other operation is happening in the stream"
+        );
 
         // Only the sender can resume the stream
         require!(
@@ -508,7 +515,10 @@ impl Contract {
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
-        require!(!temp_stream.locked, "Some other operation is happening in the stream");
+        require!(
+            !temp_stream.locked,
+            "Some other operation is happening in the stream"
+        );
 
         // Check 1 yocto token for ft_token call
         if !temp_stream.is_native {
@@ -622,7 +632,6 @@ impl Contract {
         res
     }
 
-
     // allows the sender to withdraw funds if the stream is_cancelled.
     pub fn ft_claim_sender(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
         // convert id to native u64
@@ -630,7 +639,10 @@ impl Contract {
 
         // Get the stream
         let mut temp_stream = self.streams.get(&id).unwrap();
-        require!(!temp_stream.locked, "Some other operation is happening in the stream");
+        require!(
+            !temp_stream.locked,
+            "Some other operation is happening in the stream"
+        );
 
         // Needs one yocto to transfer the ft tokens
         if !temp_stream.is_native {
@@ -677,7 +689,7 @@ impl Contract {
     // method only to facilitate unit tests
     // streams cannot be unlocked in unit tests because callbacks don't work
     #[cfg(test)]
-    pub fn unlock(&mut self, stream_id:U64) -> bool {
+    pub fn unlock(&mut self, stream_id: U64) -> bool {
         // convert id to native u64
         let id: u64 = stream_id.0;
 
@@ -686,17 +698,17 @@ impl Contract {
         temp_stream.locked = false;
         self.streams.insert(&stream_id.into(), &temp_stream);
 
-        return true
+        return true;
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use near_contract_standards::storage_management::StorageManagement;
     use near_sdk::test_utils::accounts;
     use near_sdk::test_utils::VMContextBuilder;
     use near_sdk::testing_env;
-    use near_contract_standards::storage_management::StorageManagement;
 
     const NEAR: u128 = 1000000000000000000000000;
 

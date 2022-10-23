@@ -34,7 +34,10 @@ impl Contract {
             start_time >= current_timestamp,
             "Start time cannot be in the past"
         );
-        require!(end_time >= start_time, "End time cannot smaller than start time");
+        require!(
+            end_time >= start_time,
+            "End time cannot smaller than start time"
+        );
 
         // check the rate is valid
         require!(rate > 0, "Rate cannot be zero");
@@ -73,8 +76,11 @@ impl Contract {
     }
 
     pub fn delete_streams(&mut self, stream_ids: Vec<U64>) {
-        require!(env::predecessor_account_id() == self.manager, "only the manager can delete streams");
-        for stream_id in stream_ids  {
+        require!(
+            env::predecessor_account_id() == self.manager,
+            "only the manager can delete streams"
+        );
+        for stream_id in stream_ids {
             self.delete_stream(stream_id);
         }
     }
@@ -85,7 +91,10 @@ impl Contract {
         let stream = self.streams.get(&stream_id.0).unwrap();
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
         require!(stream.end_time < current_timestamp);
-        require!(stream.balance == 0, "There are still some funds in the stream");
+        require!(
+            stream.balance == 0,
+            "There are still some funds in the stream"
+        );
         self.streams.remove(&stream.id);
     }
 }
@@ -163,7 +172,7 @@ mod tests {
 
         // charlie as manager
         set_context_with_balance_timestamp(accounts(2), 0, stream_start_time + 11);
-        let stream_ids: Vec<U64>  = vec![stream_id];
+        let stream_ids: Vec<U64> = vec![stream_id];
         contract.delete_streams(stream_ids);
     }
 }

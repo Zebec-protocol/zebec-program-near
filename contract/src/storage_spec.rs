@@ -198,7 +198,13 @@ mod tests {
 
         let res = contract.storage_deposit(Some(caller.clone()), Some(false));
         assert!(res.total == U128(deposit_amount));
-        assert!(res.available == U128(deposit_amount - contract.account_storage_usage as Balance * env::storage_byte_cost()));
+        assert!(
+            res.available
+                == U128(
+                    deposit_amount
+                        - contract.account_storage_usage as Balance * env::storage_byte_cost()
+                )
+        );
     }
 
     #[test]
