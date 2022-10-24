@@ -18,6 +18,8 @@ mod views;
 use constants::MAX_RATE;
 use constants::NATIVE_NEAR_CONTRACT_ID;
 
+use crate::constants::{GAS_FOR_FT_TRANSFER, GAS_FOR_RESOLVE_TRANSFER, GAS_FOR_FT_TRANSFER_CALL};
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -359,11 +361,16 @@ impl Contract {
             } else {
                 self.streams.insert(&stream_id.into(), &temp_stream);
                 // NEP141 : ft_transfer()
+                // 50TGas - 20(for FT transfer) - 20 (for resolve), only 5 for internal operations
+                require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
                 ext_ft_transfer::ext(temp_stream.contract_id.clone())
+                    .with_static_gas(GAS_FOR_FT_TRANSFER)
                     .with_attached_deposit(1)
                     .ft_transfer(sender, remaining_balance.into(), None)
                     .then(
-                        Self::ext(env::current_account_id()).internal_resolve_withdraw_stream(
+                        Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
+                        .internal_resolve_withdraw_stream(
                             stream_id,
                             withdrawal_amount_revert,
                             withdrawal_time_revert,
@@ -446,17 +453,15 @@ impl Contract {
                     .into()
             } else {
                 // NEP141 : ft_transfer()
-                // require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER, "More gas is required");
-                // log!("{:?}", temp_stream);
+                require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
                 ext_ft_transfer::ext(temp_stream.contract_id.clone())
-                    // .with_static_gas(GAS_FOR_FT_TRANSFER)
+                    .with_static_gas(GAS_FOR_FT_TRANSFER)
                     .with_attached_deposit(1)
                     .ft_transfer(receiver, withdrawal_amount.into(), None)
                     .then(
-                        // ext_self::ext(env::current_account_id())
-                        // .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
-                        // .resolve_ft_withdraw(stream_id, temp_stream),
-                        Self::ext(env::current_account_id()).internal_resolve_withdraw_stream(
+                        Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
+                        .internal_resolve_withdraw_stream(
                             stream_id,
                             withdrawal_amount_revert,
                             withdrawal_time_revert,
@@ -637,6 +642,7 @@ impl Contract {
                     .transfer(receiver_amt)
                     .then(
                         Self::ext(env::current_account_id())
+                            .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                             .internal_resolve_cancel_stream(stream_id, revert_balance, U128::from(fee_amount)),
                     )
                     .into()
@@ -644,11 +650,14 @@ impl Contract {
                 PromiseOrValue::Value(true)
             }
         } else {
+            require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
+                .with_static_gas(GAS_FOR_FT_TRANSFER)
                 .with_attached_deposit(1)
                 .ft_transfer(receiver, receiver_amt.into(), None)
                 .then(
                     Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                         .internal_resolve_cancel_stream(stream_id, revert_balance, U128::from(fee_amount)),
                 )
                 .into()
@@ -741,16 +750,20 @@ impl Contract {
                 .transfer(balance.into())
                 .then(
                     Self::ext(env::current_account_id())
+                        .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
                         .internal_resolve_claim_stream(stream_id, revert_balance),
                 )
                 .into()
         } else {
+            require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
+                .with_static_gas(GAS_FOR_FT_TRANSFER)
                 .with_attached_deposit(1)
                 .ft_transfer(sender, balance.into(), None)
                 .then(
                     Self::ext(env::current_account_id())
-                        .internal_resolve_claim_stream(stream_id, revert_balance),
+                    .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
+                    .internal_resolve_claim_stream(stream_id, revert_balance),
                 )
                 .into()
         }
