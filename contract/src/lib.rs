@@ -635,7 +635,7 @@ impl Contract {
     }
 
     // allows the sender to withdraw funds if the stream is_cancelled.
-    pub fn ft_claim_sender(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
+    pub fn claim(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
         // Check 1 yocto token
         assert_one_yocto();
 
@@ -648,8 +648,6 @@ impl Contract {
             !temp_stream.locked,
             "Some other operation is happening in the stream"
         );
-
-        assert_one_yocto();
 
         // Only the sender can claim
         require!(
