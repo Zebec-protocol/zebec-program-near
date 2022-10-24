@@ -817,7 +817,7 @@ mod tests {
 
         // 3. call withdraw (action)
         let stream_start_time: u64 = start_time.0;
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 2);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 2);
 
         contract.withdraw(stream_id);
 
@@ -850,7 +850,7 @@ mod tests {
 
         // 3. call withdraw (action)
         let stream_start_time: u64 = start_time.0;
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 2);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 2);
         contract.withdraw(stream_id);
     }
 
@@ -881,7 +881,7 @@ mod tests {
         contract.resume(stream_id);
 
         // 3. call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 11);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 11);
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
@@ -913,7 +913,7 @@ mod tests {
         contract.pause(stream_id);
 
         // 3. call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 11);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 11);
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
@@ -963,7 +963,7 @@ mod tests {
         contract.resume(stream_id);
 
         // 3. call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
@@ -1013,7 +1013,7 @@ mod tests {
         contract.resume(stream_id);
 
         // 3. call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
@@ -1049,7 +1049,7 @@ mod tests {
         contract.resume(stream_id);
 
         // 3. sender call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id);
         contract.unlock(stream_id);
 
@@ -1058,7 +1058,7 @@ mod tests {
         assert_eq!(internal_balance, 16 * NEAR);
 
         // 3. receiver call withdraw
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 25);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 25);
         contract.withdraw(stream_id);
 
         // 4. assert internal balance
@@ -1094,7 +1094,7 @@ mod tests {
         contract.resume(stream_id);
 
         // 3. sender call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id);
         contract.unlock(stream_id);
 
@@ -1103,7 +1103,7 @@ mod tests {
         assert_eq!(internal_balance, 4 * NEAR);
 
         // 3. receiver call withdraw
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 25);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 25);
         contract.withdraw(stream_id);
         contract.unlock(stream_id);
 
@@ -1141,7 +1141,7 @@ mod tests {
         contract.resume(stream_id);
 
         // 3. receiver call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id);
         contract.unlock(stream_id);
 
@@ -1149,7 +1149,7 @@ mod tests {
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 4 * NEAR);
 
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id); // panics here
     }
 
@@ -1226,7 +1226,7 @@ mod tests {
         contract.create_stream(receiver.clone(), rate, start_time, end_time, true, true);
 
         // pause the stream
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 9);
         contract.cancel(stream_id);
         contract.unlock(stream_id);
 
@@ -1259,7 +1259,7 @@ mod tests {
         contract.pause(stream_id);
 
         // cancel the stream
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 9);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 9);
         contract.cancel(stream_id);
         contract.unlock(stream_id);
 
@@ -1296,7 +1296,7 @@ mod tests {
         contract.resume(stream_id);
 
         // 3. sender call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id);
         contract.unlock(stream_id);
 
@@ -1304,7 +1304,7 @@ mod tests {
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 16 * NEAR);
 
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id); // panics here
 
         // 4. assert internal balance
@@ -1337,7 +1337,7 @@ mod tests {
         contract.pause(stream_id);
 
         // 3. sender call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 21);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 21);
         contract.withdraw(stream_id);
         contract.unlock(stream_id);
 
@@ -1345,7 +1345,7 @@ mod tests {
         let internal_balance = contract.streams.get(&stream_id.0).unwrap().balance;
         assert_eq!(internal_balance, 9 * NEAR);
 
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 25);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 25);
         contract.withdraw(stream_id); // panics here
 
         // 4. assert internal balance
@@ -1452,7 +1452,7 @@ mod tests {
         // 2. create stream and pause
         contract.create_stream(receiver.clone(), rate, start_time, end_time, false, false);
         let stream_id = U64::from(1);
-        set_context_with_balance_timestamp(sender.clone(), 0, start + 1);
+        set_context_with_balance_timestamp(sender.clone(), 1, start + 1);
         contract.cancel(stream_id);
     }
 
@@ -1473,7 +1473,7 @@ mod tests {
         // 2. create stream and cancel
         contract.create_stream(receiver.clone(), rate, start_time, end_time, true, false);
         let stream_id = U64::from(1);
-        set_context_with_balance_timestamp(sender.clone(), 0, start + 1);
+        set_context_with_balance_timestamp(sender.clone(), 1, start + 1);
         contract.cancel(stream_id);
 
         // 3. assert internal balance
@@ -1498,7 +1498,7 @@ mod tests {
         // 2. create stream and cancel
         contract.create_stream(receiver.clone(), rate, start_time, end_time, true, false);
         let stream_id = U64::from(1);
-        set_context_with_balance_timestamp(sender.clone(), 0, start + 1);
+        set_context_with_balance_timestamp(sender.clone(), 1, start + 1);
         contract.cancel(stream_id);
 
         // 3. assert internal balance

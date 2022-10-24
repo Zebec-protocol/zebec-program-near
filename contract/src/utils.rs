@@ -163,15 +163,17 @@ mod tests {
         contract.resume(stream_id);
 
         // 3. call withdraw after stream has ended (action)
-        set_context_with_balance_timestamp(sender.clone(), 0, stream_start_time + 11);
+        set_context_with_balance_timestamp(sender.clone(), 1, stream_start_time + 11);
         contract.withdraw(stream_id);
+        contract.unlock(stream_id);
 
         // call withdraw by receiver
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 11);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 11);
         contract.withdraw(stream_id);
+        contract.unlock(stream_id);
 
         // charlie as manager
-        set_context_with_balance_timestamp(accounts(2), 0, stream_start_time + 11);
+        set_context_with_balance_timestamp(accounts(2), 1, stream_start_time + 11);
         let stream_ids: Vec<U64> = vec![stream_id];
         contract.delete_streams(stream_ids);
     }
