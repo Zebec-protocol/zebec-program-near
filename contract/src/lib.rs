@@ -635,6 +635,7 @@ impl Contract {
     }
 
     // allows the sender to withdraw funds if the stream is_cancelled.
+    #[payable]
     pub fn claim(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
         // Check 1 yocto token
         assert_one_yocto();
