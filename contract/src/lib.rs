@@ -208,6 +208,8 @@ impl Contract {
             );
 
             stream.balance += env::attached_deposit();
+        } else {
+            assert_one_yocto();
         }
 
         self.streams.insert(&id, &stream);
@@ -241,6 +243,9 @@ impl Contract {
 
     #[payable]
     pub fn withdraw(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
+        // Check 1 yocto token
+        assert_one_yocto();
+
         // convert id to native u64
         let id: u64 = stream_id.0;
 
@@ -252,11 +257,6 @@ impl Contract {
             !temp_stream.locked,
             "Some other operation is happening in the stream"
         );
-
-        // Check 1 yocto token for ft_token call
-        if !temp_stream.is_native {
-            assert_one_yocto();
-        }
 
         require!(temp_stream.balance > 0, "No balance to withdraw");
         require!(
@@ -509,6 +509,9 @@ impl Contract {
         //  only transfers the tokens to receiver
         //  sender can claim using ft_claim_sender
 
+        // Check 1 yocto token
+        assert_one_yocto();
+
         // convert id to native u64
         let id: u64 = stream_id.0;
 
@@ -519,11 +522,6 @@ impl Contract {
             !temp_stream.locked,
             "Some other operation is happening in the stream"
         );
-
-        // Check 1 yocto token for ft_token call
-        if !temp_stream.is_native {
-            assert_one_yocto();
-        }
 
         // check that the stream can be cancelled
         require!(temp_stream.can_cancel, "Stream cannot be cancelled");
@@ -572,13 +570,17 @@ impl Contract {
         log!("Stream cancelled: {}", temp_stream.id);
 
         if temp_stream.is_native {
-            Promise::new(receiver)
-                .transfer(receiver_amt)
-                .then(
-                    Self::ext(env::current_account_id())
-                        .internal_resolve_cancel_stream(stream_id, revert_balance),
-                )
-                .into()
+            if receiver_amt > 0 {
+                Promise::new(receiver)
+                    .transfer(receiver_amt)
+                    .then(
+                        Self::ext(env::current_account_id())
+                            .internal_resolve_cancel_stream(stream_id, revert_balance),
+                    )
+                    .into()
+            } else {
+                PromiseOrValue::Value(true)
+            }
         } else {
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
                 .with_attached_deposit(1)
@@ -634,6 +636,9 @@ impl Contract {
 
     // allows the sender to withdraw funds if the stream is_cancelled.
     pub fn ft_claim_sender(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
+        // Check 1 yocto token
+        assert_one_yocto();
+
         // convert id to native u64
         let id: u64 = stream_id.0;
 
@@ -644,10 +649,7 @@ impl Contract {
             "Some other operation is happening in the stream"
         );
 
-        // Needs one yocto to transfer the ft tokens
-        if !temp_stream.is_native {
-            assert_one_yocto();
-        }
+        assert_one_yocto();
 
         // Only the sender can claim
         require!(
