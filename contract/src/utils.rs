@@ -1,3 +1,5 @@
+use std::{collections::HashMap};
+
 use crate::{*, constants::FEE_BPS_DIVISOR};
 
 use constants::NATIVE_NEAR_CONTRACT_ID;
@@ -166,11 +168,81 @@ impl Contract {
     
     // claim accumulated fee by fee_receiver
     #[payable]
-    pub fn claim_fee(&mut self) {
+    pub fn claim_fee_ft(&mut self, contract_id: AccountId) -> PromiseOrValue<bool>{
         assert_one_yocto();
         require!(env::predecessor_account_id() == self.fee_receiver, "Not fee receiver!");
         
-        // self.accumulated_fee
+        let _amount = self.accumulated_fees.get(&contract_id).unwrap();
+
+        self.accumulated_fees.insert(&contract_id, &0);
+        ext_ft_transfer::ext(contract_id.clone())
+            .with_attached_deposit(1)
+            .ft_transfer(self.fee_receiver.clone(), _amount.into(), None)
+            .then(
+                Self::ext(env::current_account_id()).internal_resolve_claim_fee_ft(
+                    contract_id,
+                    _amount.into()
+                ),
+            )
+            .into()
+    }
+
+    #[private]
+    pub fn internal_resolve_claim_fee_ft(
+        &mut self,
+        contract_id: AccountId,
+        amount: U128,
+
+    ) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if !res {
+            self.accumulated_fees.insert(&contract_id, &amount.into());
+        }
+        res
+    }
+    
+    #[private]
+    pub fn internal_resolve_claim_fee_native(
+        &mut self,
+        amount: U128,
+
+    ) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if !res {
+            self.native_fees = amount.into();
+        }
+        res
+    }
+
+    // claim accumulated fee by fee_receiver
+    #[payable]
+    pub fn claim_fee_native(&mut self) -> PromiseOrValue<bool>{
+        assert_one_yocto();
+        require!(env::predecessor_account_id() == self.fee_receiver, "Not fee receiver!");
+        let _amount = self.native_fees;
+        self.native_fees = 0;
+        Promise::new(self.fee_receiver.clone()).transfer(_amount).then(
+            Self::ext(env::current_account_id()).internal_resolve_claim_fee_native(
+                _amount.into()
+            )
+        ).into()
+    }
+
+    // utility function to view the claimable fee, for testing purposes
+    pub fn view_claimable_fee(&self) -> HashMap<AccountId, U128> {
+        let mut _hashmap = HashMap::new();
+        
+        for a in self.accumulated_fees.keys() {
+            _hashmap.insert(a.clone(), U128::from(self.accumulated_fees.get(&a).unwrap()));
+        }
+        _hashmap.insert("native.testnet".parse().unwrap(), U128(self.native_fees));
+        _hashmap
     }
 
     pub fn calculate_fee_amount(&self, _amount:u128) -> u128 {
