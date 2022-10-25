@@ -82,7 +82,7 @@ impl Contract {
 
 
     // ------------------- owner functions --------------------------------------
-    pub fn assert_owner(&self) {
+    fn assert_owner(&self) {
         assert_eq!(env::predecessor_account_id(), self.owner_id, "Not owner");
     }
 
@@ -91,7 +91,7 @@ impl Contract {
         self.owner_id.clone()
     }
 
-    pub fn assert_manager(&self) {
+    fn assert_manager(&self) {
         require!(env::predecessor_account_id() == self.manager_id, "Not Manager");
     }
 
@@ -166,23 +166,25 @@ impl Contract {
         self.assert_owner();
         self.fee_receiver = new_receiver;
     }
-
     // claim accumulated fee by fee_receiver
     #[payable]
-    pub fn claim_fee_ft(&mut self, contract_id: AccountId) -> PromiseOrValue<bool>{
+    pub fn claim_fee_ft(&mut self, contract_id: AccountId, amount: U128) -> PromiseOrValue<bool>{
         assert_one_yocto();
         require!(env::predecessor_account_id() == self.fee_receiver, "Not fee receiver!");
+        let fee_amount = self.accumulated_fees.get(&contract_id).unwrap();
 
-        let _amount = self.accumulated_fees.get(&contract_id).unwrap();
+        require!(fee_amount >= amount.0, "cannot claim fee amount greater than accumulated fee!");
 
-        self.accumulated_fees.insert(&contract_id, &0);
+        let remaining_amount = fee_amount - amount.0;
+
+        self.accumulated_fees.insert(&contract_id, &remaining_amount);
         ext_ft_transfer::ext(contract_id.clone())
             .with_attached_deposit(1)
-            .ft_transfer(self.fee_receiver.clone(), _amount.into(), None)
+            .ft_transfer(self.fee_receiver.clone(), amount.into(), None)
             .then(
                 Self::ext(env::current_account_id()).internal_resolve_claim_fee_ft(
                     contract_id,
-                    _amount.into()
+                    fee_amount.into()
                 ),
             )
             .into()
@@ -225,14 +227,15 @@ impl Contract {
 
     // claim accumulated fee by fee_receiver
     #[payable]
-    pub fn claim_fee_native(&mut self) -> PromiseOrValue<bool>{
+    pub fn claim_fee_native(&mut self, amount: U128) -> PromiseOrValue<bool>{
         assert_one_yocto();
         require!(env::predecessor_account_id() == self.fee_receiver, "Not fee receiver!");
-        let amount = self.native_fees;
-        self.native_fees = 0;
-        Promise::new(self.fee_receiver.clone()).transfer(amount).then(
+        let fee_amount = self.native_fees;
+        require!(fee_amount >= amount.0, "cannot claim amount greater than accumulated!");
+        self.native_fees = fee_amount - amount.0;
+        Promise::new(self.fee_receiver.clone()).transfer(amount.0).then(
             Self::ext(env::current_account_id()).internal_resolve_claim_fee_native(
-                amount.into()
+                amount.into(),
             )
         ).into()
     }
