@@ -51,7 +51,7 @@ impl Contract {
         self.streams.insert(&params_key, &stream);
 
         // Verify that the user has enough balance to cover for storage used
-        let storage_balance = self.accounts.get(&sender_account).unwrap();
+        let mut storage_balance = self.accounts.get(&sender_account).unwrap();
         let final_storage_usage = env::storage_usage();
         let required_storage_balance =
             (final_storage_usage - initial_storage_usage) as Balance * env::storage_byte_cost();
@@ -63,6 +63,12 @@ impl Contract {
                 required_storage_balance
             ),
         );
+
+        // Update the account as per the storage balance used
+        storage_balance.available = (storage_balance.available.0 - required_storage_balance).into();
+
+        self.accounts
+            .insert(&stream.sender, &storage_balance);
 
         // Update the global stream count for next stream
         self.current_id += 1;
