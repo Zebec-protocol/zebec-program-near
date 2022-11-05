@@ -558,7 +558,11 @@ impl Contract {
         // Update the stream balance and save
         temp_stream.balance -= receiver_amt;
         temp_stream.is_cancelled = true;
-        temp_stream.locked = true;
+
+        // Lock only if transfer will occur
+        if (receiver_amt > 0) {
+            temp_stream.locked = true;
+        }
 
         // Values to revert in case the transfer fails
         let revert_balance = U128::from(receiver_amt);
