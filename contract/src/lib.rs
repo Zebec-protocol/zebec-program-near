@@ -29,8 +29,8 @@ pub struct Contract {
     manager_id: AccountId, // delete stagnant streams
     whitelisted_tokens: UnorderedSet<AccountId>,
     fee_receiver: AccountId,
-    fee_rate: u64, // in BPS (25 = 0.25%)
-    max_fee_rate: u64, // in BPS, if 2% then 200
+    fee_rate: u64, // in BPS based on constants::FEE_BPS_DIVISOR(10_000)
+    max_fee_rate: u64, // in BPS based on constants::FEE_BPS_DIVISOR(10_000)
     accumulated_fees: UnorderedMap<AccountId, u128>,  // fee_amount for the receiver per token
     native_fees: u128,
 }
@@ -237,6 +237,7 @@ impl Contract {
         // Values to revert back in case of failure
         withdrawal_amount: U128,
         withdraw_time: U64,
+        fee_amount: U128,
     ) -> bool {
         let res: bool = match env::promise_result(0) {
             PromiseResult::Successful(_) => true,
@@ -245,10 +246,22 @@ impl Contract {
         let mut temp_stream = self.streams.get(&stream_id.into()).unwrap();
         temp_stream.locked = false;
         if !res {
-            // In case of failure revert the withdrawn_amount and withdraw_time
+            // In case of failure revert the changed states
+
+            // Revert the balance of the stream
             temp_stream.balance += withdrawal_amount.0;
+
+            // Revert the withdraw time
             if withdraw_time.0 < temp_stream.withdraw_time {
                 temp_stream.withdraw_time = withdraw_time.0;
+            }
+
+            // Revert the accumulated total fee calculation
+            if temp_stream.is_native {
+                self.native_fees -= fee_amount.0;
+            } else {
+                let total_fee = self.accumulated_fees.get(&temp_stream.contract_id).unwrap_or(0) - fee_amount.0;
+                self.accumulated_fees.insert(&temp_stream.contract_id, &total_fee);
             }
         }
         self.streams.insert(&stream_id.into(), &temp_stream);
@@ -339,6 +352,7 @@ impl Contract {
                             stream_id,
                             withdrawal_amount_revert,
                             withdrawal_time_revert,
+                            U128::from(0),
                         ),
                     )
                     .into()
@@ -353,6 +367,7 @@ impl Contract {
                             stream_id,
                             withdrawal_amount_revert,
                             withdrawal_time_revert,
+                            U128::from(0),
                         ),
                     )
                     .into()
@@ -403,9 +418,12 @@ impl Contract {
             // Update the stream
             self.streams.insert(&stream_id.into(), &temp_stream);
 
+
+            // Calculate fee amount
+            let fee_amount = self.calculate_fee_amount(withdrawal_amount);
+
             // fee caclulation
-            if self.fee_rate > 0 {
-                let fee_amount = self.calculate_fee_amount(withdrawal_amount);
+            if fee_amount > 0 {
                 if temp_stream.is_native {
                     self.native_fees += fee_amount;
                 } else {
@@ -423,6 +441,7 @@ impl Contract {
                             stream_id,
                             withdrawal_amount_revert,
                             withdrawal_time_revert,
+                            U128::from(fee_amount),
                         ),
                     )
                     .into()
@@ -442,6 +461,7 @@ impl Contract {
                             stream_id,
                             withdrawal_amount_revert,
                             withdrawal_time_revert,
+                            U128::from(fee_amount),
                         ),
                     )
                     .into()
@@ -579,6 +599,9 @@ impl Contract {
                 u128::from(current_timestamp - temp_stream.withdraw_time) * temp_stream.rate;
         }
 
+        // Values to revert in case the transfer fails
+        let revert_balance = U128::from(receiver_amt);
+
         let receiver = temp_stream.receiver.clone();
 
         // Update the stream balance and save
@@ -586,19 +609,17 @@ impl Contract {
         temp_stream.is_cancelled = true;
 
         // Lock only if transfer will occur
-        if (receiver_amt > 0) {
+        if receiver_amt > 0 {
             temp_stream.locked = true;
         }
-
-        // Values to revert in case the transfer fails
-        let revert_balance = U128::from(receiver_amt);
 
         // Update the stream
         self.streams.insert(&id, &temp_stream);
 
         // fee caclulation
-        if self.fee_rate > 0 {
-            let fee_amount = self.calculate_fee_amount(receiver_amt);
+        let fee_amount = self.calculate_fee_amount(receiver_amt);
+
+        if fee_amount > 0 {
             if temp_stream.is_native {
                 self.native_fees  += fee_amount
             } else {
@@ -617,7 +638,7 @@ impl Contract {
                     .transfer(receiver_amt)
                     .then(
                         Self::ext(env::current_account_id())
-                            .internal_resolve_cancel_stream(stream_id, revert_balance),
+                            .internal_resolve_cancel_stream(stream_id, revert_balance, U128::from(fee_amount)),
                     )
                     .into()
             } else {
@@ -629,7 +650,7 @@ impl Contract {
                 .ft_transfer(receiver, receiver_amt.into(), None)
                 .then(
                     Self::ext(env::current_account_id())
-                        .internal_resolve_cancel_stream(stream_id, revert_balance),
+                        .internal_resolve_cancel_stream(stream_id, revert_balance, U128::from(fee_amount)),
                 )
                 .into()
         }
@@ -640,6 +661,7 @@ impl Contract {
         &mut self,
         stream_id: U64,
         withdrawal_amount: U128,
+        fee_amount: U128,
     ) -> bool {
         let res: bool = match env::promise_result(0) {
             PromiseResult::Successful(_) => true,
@@ -651,6 +673,12 @@ impl Contract {
             // In case of failure revert the withdrawal_amount and the is_cancelled state
             temp_stream.balance += withdrawal_amount.0;
             temp_stream.is_cancelled = false;
+            if temp_stream.is_native {
+                self.native_fees -= fee_amount.0;
+            } else {
+                let total_fee = self.accumulated_fees.get(&temp_stream.contract_id).unwrap_or(0) - fee_amount.0;
+                self.accumulated_fees.insert(&temp_stream.contract_id, &total_fee);
+            }
         }
         self.streams.insert(&stream_id.into(), &temp_stream);
         res
@@ -1416,7 +1444,7 @@ mod tests {
         contract.create_stream(receiver.clone(), rate, start_time, end_time, false, false);
 
         // pause and resume the stream
-        set_context_with_balance_timestamp(receiver.clone(), 0, stream_start_time + 9);
+        set_context_with_balance_timestamp(receiver.clone(), 1, stream_start_time + 9);
         contract.withdraw(stream_id);
 
         let fee_amount = contract.calculate_fee_amount( 9 * NEAR);

@@ -7,9 +7,3 @@ pub const NATIVE_NEAR_CONTRACT_ID: &str = "test.near";
 pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
 
 pub const FEE_BPS_DIVISOR: u64 = 10_000; // divisor for fee
-
-// Valid token account ids for testnet, needs to build with feature="testnet"
-pub const TESTNET_TOKEN_ACCOUNTS: [&'static str; 2] = ["usdn.testnet", "wrap.testnet"];
-
-// @todo add valid stablecoins (from mainnet) address here later
-pub const MAINNET_TOKEN_ACCOUNTS: [&'static str; 2] = ["usdn.near", "wrap.near"];
