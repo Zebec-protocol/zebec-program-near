@@ -26,12 +26,12 @@ pub struct Contract {
     pub accounts: LookupMap<AccountId, StorageBalance>,
     account_storage_usage: StorageUsage,
     owner_id: AccountId, // owner of the contract
-    manager_id: AccountId, // delete stagnant streams 
+    manager_id: AccountId, // delete stagnant streams
     whitelisted_tokens: UnorderedSet<AccountId>,
     fee_receiver: AccountId,
     fee_rate: u64, // in BPS (25 = 0.25%)
     max_fee_rate: u64, // in BPS, if 2% then 200
-    accumulated_fees: UnorderedMap<AccountId, u128>,  // fee_amount for the receiver per token 
+    accumulated_fees: UnorderedMap<AccountId, u128>,  // fee_amount for the receiver per token
     native_fees: u128,
 }
 // Define the stream structure
@@ -316,7 +316,7 @@ impl Contract {
             // Calculate the withdrawal amount
             let remaining_balance = temp_stream.balance - withdrawal_amount;
             require!(remaining_balance > 0, "Already withdrawn");
-         
+
             // Update stream and save
             temp_stream.balance -= remaining_balance;
             temp_stream.locked = true;
@@ -592,13 +592,12 @@ impl Contract {
 
         // Values to revert in case the transfer fails
         let revert_balance = U128::from(receiver_amt);
-        
+
         // Update the stream
         self.streams.insert(&id, &temp_stream);
 
         // fee caclulation
         if self.fee_rate > 0 {
-            // @todo check for overflow
             let fee_amount = self.calculate_fee_amount(receiver_amt);
             if temp_stream.is_native {
                 self.native_fees  += fee_amount
