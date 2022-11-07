@@ -331,7 +331,7 @@ impl Contract {
             // Calculate the withdrawal amount
             let remaining_balance = temp_stream.balance - withdrawal_amount;
             require!(remaining_balance > 0, "Already withdrawn");
-         
+
             // Update stream and save
             temp_stream.balance -= remaining_balance;
             temp_stream.locked = true;
@@ -362,7 +362,7 @@ impl Contract {
                 self.streams.insert(&stream_id.into(), &temp_stream);
                 // NEP141 : ft_transfer()
                 // 50TGas - 20(for FT transfer) - 20 (for resolve), only 5 for internal operations
-                require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
+                require!((env::prepaid_gas() - env::used_gas()) > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
                 ext_ft_transfer::ext(temp_stream.contract_id.clone())
                     .with_static_gas(GAS_FOR_FT_TRANSFER)
                     .with_attached_deposit(1)
@@ -453,7 +453,7 @@ impl Contract {
                     .into()
             } else {
                 // NEP141 : ft_transfer()
-                require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
+                require!((env::prepaid_gas() - env::used_gas()) > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
                 ext_ft_transfer::ext(temp_stream.contract_id.clone())
                     .with_static_gas(GAS_FOR_FT_TRANSFER)
                     .with_attached_deposit(1)
@@ -617,6 +617,9 @@ impl Contract {
             temp_stream.locked = true;
         }
 
+        // Values to revert in case the transfer fails
+        let revert_balance = U128::from(receiver_amt);
+
         // Update the stream
         self.streams.insert(&id, &temp_stream);
 
@@ -650,7 +653,7 @@ impl Contract {
                 PromiseOrValue::Value(true)
             }
         } else {
-            require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
+            require!((env::prepaid_gas() - env::used_gas()) > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
                 .with_static_gas(GAS_FOR_FT_TRANSFER)
                 .with_attached_deposit(1)

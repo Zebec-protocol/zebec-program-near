@@ -4,6 +4,9 @@ use crate::*;
 
 use constants::{
     NATIVE_NEAR_CONTRACT_ID,
+    GAS_FOR_FT_TRANSFER,
+    GAS_FOR_RESOLVE_TRANSFER,
+    GAS_FOR_FT_TRANSFER_CALL,
     FEE_BPS_DIVISOR
 };
 
@@ -166,11 +169,13 @@ impl Contract {
         self.assert_owner();
         self.fee_receiver = new_receiver;
     }
+
     // claim accumulated fee by fee_receiver
     #[payable]
     pub fn claim_fee_ft(&mut self, contract_id: AccountId, amount: U128) -> PromiseOrValue<bool>{
         assert_one_yocto();
         require!(env::predecessor_account_id() == self.fee_receiver, "Not fee receiver!");
+
         let fee_amount = self.accumulated_fees.get(&contract_id).unwrap();
 
         require!(fee_amount >= amount.0, "cannot claim fee amount greater than accumulated fee!");
@@ -178,13 +183,17 @@ impl Contract {
         let remaining_amount = fee_amount - amount.0;
 
         self.accumulated_fees.insert(&contract_id, &remaining_amount);
+        require!((env::prepaid_gas() - env::used_gas()) > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
         ext_ft_transfer::ext(contract_id.clone())
             .with_attached_deposit(1)
+            .with_static_gas(GAS_FOR_FT_TRANSFER)
             .ft_transfer(self.fee_receiver.clone(), amount.into(), None)
             .then(
-                Self::ext(env::current_account_id()).internal_resolve_claim_fee_ft(
+                Self::ext(env::current_account_id())
+                .with_static_gas(GAS_FOR_RESOLVE_TRANSFER)
+                .internal_resolve_claim_fee_ft(
                     contract_id,
-                    fee_amount.into()
+                    amount,
                 ),
             )
             .into()
