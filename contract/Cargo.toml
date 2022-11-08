@@ -21,10 +21,5 @@ debug = false
 panic = "abort"
 overflow-checks = true
 
-[features]
-default = []
-testnet = []
-mainnet = []
-
 [workspace]
 members = []
