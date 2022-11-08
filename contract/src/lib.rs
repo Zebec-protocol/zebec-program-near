@@ -617,9 +617,6 @@ impl Contract {
             temp_stream.locked = true;
         }
 
-        // Values to revert in case the transfer fails
-        let revert_balance = U128::from(receiver_amt);
-
         // Update the stream
         self.streams.insert(&id, &temp_stream);
 
