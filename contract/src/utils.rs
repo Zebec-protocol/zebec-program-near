@@ -1,6 +1,11 @@
+use std::collections::HashMap;
+
 use crate::*;
 
-use constants::NATIVE_NEAR_CONTRACT_ID;
+use constants::{
+    NATIVE_NEAR_CONTRACT_ID,
+    FEE_BPS_DIVISOR
+};
 
 #[near_bindgen]
 impl Contract {
@@ -75,12 +80,61 @@ impl Contract {
         }
     }
 
+
+    // ------------------- owner functions --------------------------------------
+    pub fn assert_owner(&self) {
+        assert_eq!(env::predecessor_account_id(), self.owner_id, "Not owner");
+    }
+
+    /// Get the owner of this contract.
+    pub fn get_owner(&self) -> AccountId {
+        self.owner_id.clone()
+    }
+
+    pub fn assert_manager(&self) {
+        require!(env::predecessor_account_id() == self.manager_id, "Not Manager");
+    }
+
+    /// Change owner. Only can be called by owner.
+    #[payable]
+    pub fn set_owner(&mut self, owner_id: AccountId) {
+        assert_one_yocto();
+        self.assert_owner();
+        self.owner_id = owner_id;
+    }
+
+    /// Extend whitelisted tokens with new tokens. Only can be called by owner.
+    #[payable]
+    pub fn extend_whitelisted_tokens(&mut self, tokens: Vec<AccountId>) {
+        assert_one_yocto();
+        self.assert_owner();
+        for token in tokens {
+            self.whitelisted_tokens.insert(&token);
+        }
+    }
+
+    /// Remove whitelisted token. Only can be called by owner.
+    #[payable]
+    pub fn remove_whitelisted_tokens(&mut self, tokens: Vec<AccountId>) {
+        assert_one_yocto();
+        self.assert_owner();
+        for token in tokens {
+            let exist = self.whitelisted_tokens.remove(&token);
+            assert!(exist, "Token not in the list");
+        }
+    }
+
+    // view whitelisted tokens
+    pub fn get_whitelisted_tokens(&self) -> Vec<AccountId> {
+        self.whitelisted_tokens.to_vec()
+    }
+
+    /// delete streams. Only can be called by manager.
+    #[payable]
     pub fn delete_streams(&mut self, stream_ids: Vec<U64>) {
-        require!(
-            env::predecessor_account_id() == self.manager,
-            "only the manager can delete streams"
-        );
-        for stream_id in stream_ids {
+        assert_one_yocto();
+        self.assert_manager();
+        for stream_id in stream_ids  {
             self.delete_stream(stream_id);
         }
     }
@@ -97,6 +151,113 @@ impl Contract {
         );
         self.streams.remove(&stream.id);
     }
+
+    // assert_one_yocto()
+    #[payable]
+    pub fn change_fee_rate(&mut self, new_rate: U64) {
+        assert_one_yocto();
+        self.assert_owner();
+        require!(new_rate.0 <= self.max_fee_rate, "Rate cannot be greater than max fee_rate");
+        self.fee_rate = new_rate.0;
+    }
+
+    #[payable]
+    pub fn change_fee_receiver(&mut self, new_receiver: AccountId) {
+        assert_one_yocto();
+        self.assert_owner();
+        self.fee_receiver = new_receiver;
+    }
+
+    // claim accumulated fee by fee_receiver
+    #[payable]
+    pub fn claim_fee_ft(&mut self, contract_id: AccountId) -> PromiseOrValue<bool>{
+        assert_one_yocto();
+        require!(env::predecessor_account_id() == self.fee_receiver, "Not fee receiver!");
+
+        let _amount = self.accumulated_fees.get(&contract_id).unwrap();
+
+        self.accumulated_fees.insert(&contract_id, &0);
+        ext_ft_transfer::ext(contract_id.clone())
+            .with_attached_deposit(1)
+            .ft_transfer(self.fee_receiver.clone(), _amount.into(), None)
+            .then(
+                Self::ext(env::current_account_id()).internal_resolve_claim_fee_ft(
+                    contract_id,
+                    _amount.into()
+                ),
+            )
+            .into()
+    }
+
+    #[private]
+    pub fn internal_resolve_claim_fee_ft(
+        &mut self,
+        contract_id: AccountId,
+        amount: U128,
+
+    ) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if !res {
+            let fee_amount = self.accumulated_fees.get(&contract_id).unwrap();
+            let restore_amount = fee_amount + amount.0;
+            self.accumulated_fees.insert(&contract_id, &restore_amount);
+        }
+        res
+    }
+
+    #[private]
+    pub fn internal_resolve_claim_fee_native(
+        &mut self,
+        amount: U128,
+
+    ) -> bool {
+        let res: bool = match env::promise_result(0) {
+            PromiseResult::Successful(_) => true,
+            _ => false,
+        };
+        if !res {
+            self.native_fees += amount.0;
+        }
+        res
+    }
+
+    // claim accumulated fee by fee_receiver
+    #[payable]
+    pub fn claim_fee_native(&mut self) -> PromiseOrValue<bool>{
+        assert_one_yocto();
+        require!(env::predecessor_account_id() == self.fee_receiver, "Not fee receiver!");
+        let amount = self.native_fees;
+        self.native_fees = 0;
+        Promise::new(self.fee_receiver.clone()).transfer(amount).then(
+            Self::ext(env::current_account_id()).internal_resolve_claim_fee_native(
+                amount.into()
+            )
+        ).into()
+    }
+
+    // utility function to view the claimable fee, for testing purposes
+    pub fn view_claimable_fee(&self) -> HashMap<AccountId, U128> {
+        let mut _hashmap = HashMap::new();
+
+        for a in self.accumulated_fees.keys() {
+            _hashmap.insert(a.clone(), U128::from(self.accumulated_fees.get(&a).unwrap()));
+        }
+
+        // Native fees accumulated
+        _hashmap.insert("native.testnet".parse().unwrap(), U128(self.native_fees));
+        _hashmap
+    }
+
+    pub fn calculate_fee_amount(&self, amount:u128) -> u128 {
+        (amount * u128::from(self.fee_rate)) / u128::from(FEE_BPS_DIVISOR)
+    }
+
+    pub fn valid_ft_sender(&self, account: AccountId) -> bool {
+        self.whitelisted_tokens.contains(&account)
+    }
 }
 
 #[cfg(test)]
@@ -111,7 +272,7 @@ mod tests {
 
     #[test]
     fn initializes() {
-        let contract = Contract::new(accounts(2));
+        let contract = Contract::new(accounts(2), accounts(3), accounts(4), U64::from(25), U64::from(200)); // "charlie", "danny", "eugene"
         assert_eq!(contract.current_id, 1);
         assert_eq!(contract.streams.len(), 0);
     }
@@ -145,7 +306,7 @@ mod tests {
         let sender = &accounts(0); // alice
         let receiver = &accounts(1); // bob
         let rate = U128::from(1 * NEAR);
-        let mut contract = Contract::new(accounts(2)); // charlie
+        let mut contract = Contract::new(accounts(2), accounts(3), accounts(4), U64::from(25), U64::from(200)); // "charlie", "danny", "eugene"
         register_user(&mut contract, sender.clone());
 
         let stream_id = U64::from(1);
@@ -173,7 +334,7 @@ mod tests {
         contract.unlock(stream_id);
 
         // charlie as manager
-        set_context_with_balance_timestamp(accounts(2), 1, stream_start_time + 11);
+        set_context_with_balance_timestamp(accounts(3), 1, stream_start_time + 11);
         let stream_ids: Vec<U64> = vec![stream_id];
         contract.delete_streams(stream_ids);
     }
