@@ -140,7 +140,6 @@ impl Contract {
     }
 
     // deletes the stream and frees on-chain storage
-    #[private]
     fn delete_stream(&mut self, stream_id: U64) {
         let stream = self.streams.get(&stream_id.0).unwrap();
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;

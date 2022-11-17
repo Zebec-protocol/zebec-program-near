@@ -7,7 +7,6 @@ pub use crate::views::*;
 
 #[near_bindgen]
 impl Contract {
-    #[private]
     fn ft_create_stream(
         &mut self,
         stream_rate: U128,
