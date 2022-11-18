@@ -755,7 +755,7 @@ impl Contract {
                 )
                 .into()
         } else {
-            require!(env::prepaid_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
+            require!(env::prepaid_gas() - env::used_gas() > GAS_FOR_FT_TRANSFER_CALL, "More gas is required");
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
                 .with_static_gas(GAS_FOR_FT_TRANSFER)
                 .with_attached_deposit(1)
