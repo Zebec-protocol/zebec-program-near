@@ -82,6 +82,8 @@ impl Contract {
 
 
     // ------------------- owner functions --------------------------------------
+
+    /// Assert the caller is the owner
     pub fn assert_owner(&self) {
         assert_eq!(env::predecessor_account_id(), self.owner_id, "Not owner");
     }
@@ -91,11 +93,15 @@ impl Contract {
         self.owner_id.clone()
     }
 
+    /// Assert the caller is the manager
     pub fn assert_manager(&self) {
         require!(env::predecessor_account_id() == self.manager_id, "Not Manager");
     }
 
     /// Change owner. Only can be called by owner.
+    ///
+    /// # Arguments
+    /// * `owner_id` - Account id of the new owner
     #[payable]
     pub fn set_owner(&mut self, owner_id: AccountId) {
         assert_one_yocto();
@@ -104,6 +110,9 @@ impl Contract {
     }
 
     /// Extend whitelisted tokens with new tokens. Only can be called by owner.
+    ///
+    /// # Arguments
+    /// * `tokens` - Vector containing the AccountId of each new tokens
     #[payable]
     pub fn extend_whitelisted_tokens(&mut self, tokens: Vec<AccountId>) {
         assert_one_yocto();
@@ -114,6 +123,9 @@ impl Contract {
     }
 
     /// Remove whitelisted token. Only can be called by owner.
+    ///
+    /// # Arguments
+    /// * `tokens` - Vector containing the AccountId of tokens to remove from whitelist
     #[payable]
     pub fn remove_whitelisted_tokens(&mut self, tokens: Vec<AccountId>) {
         assert_one_yocto();
@@ -124,12 +136,20 @@ impl Contract {
         }
     }
 
-    // view whitelisted tokens
+    /// view whitelisted tokens
+    ///
+    /// # Return
+    /// This returns the Vector containing the accountIds of all the whitelisted tokens
     pub fn get_whitelisted_tokens(&self) -> Vec<AccountId> {
         self.whitelisted_tokens.to_vec()
     }
 
     /// delete streams. Only can be called by manager.
+    /// All the stream to delete must be completed and should not contain any balance
+    ///
+    ///
+    /// # Arguments
+    /// * `stream_ids` - Vector containing the ids of each stream to delete
     #[payable]
     pub fn delete_streams(&mut self, stream_ids: Vec<U64>) {
         assert_one_yocto();
@@ -139,7 +159,11 @@ impl Contract {
         }
     }
 
-    // deletes the stream and frees on-chain storage
+    /// internal function to delete a stream
+    /// All the stream to delete must be completed and should not contain any balance
+    ///
+    /// # Arguments
+    /// * `stream_id` - id of the stream to remove
     fn delete_stream(&mut self, stream_id: U64) {
         let stream = self.streams.get(&stream_id.0).unwrap();
         let current_timestamp: u64 = env::block_timestamp_ms() / 1000;
@@ -151,7 +175,11 @@ impl Contract {
         self.streams.remove(&stream.id);
     }
 
-    // assert_one_yocto()
+    /// change the fee rate of the contract. Can only be called by the owner.
+    /// The fee rate must be less than the max fee rate.
+    ///
+    /// # Arguments
+    /// * `new_rate` - new stream rate
     #[payable]
     pub fn change_fee_rate(&mut self, new_rate: U64) {
         assert_one_yocto();
@@ -160,6 +188,10 @@ impl Contract {
         self.fee_rate = new_rate.0;
     }
 
+    /// change the fee receiver of the contract. Can only be called by the owner.
+    ///
+    /// # Arguments
+    /// * `new_receiver` - the account id of the new fee receiver
     #[payable]
     pub fn change_fee_receiver(&mut self, new_receiver: AccountId) {
         assert_one_yocto();
@@ -167,7 +199,14 @@ impl Contract {
         self.fee_receiver = new_receiver;
     }
 
-    // claim accumulated fee by fee_receiver
+    /// claim the fees accumulated (only for the fungible token streams)
+    ///
+    /// # Arguments
+    /// * `AccountId` - the account id of the fungible token whose accumulated fees are to be
+    /// withdrawn
+    ///
+    /// # Return
+    /// Returns the promise weather the transfer operation was successful
     #[payable]
     pub fn claim_fee_ft(&mut self, contract_id: AccountId) -> PromiseOrValue<bool>{
         assert_one_yocto();
@@ -188,6 +227,15 @@ impl Contract {
             .into()
     }
 
+    /// Internal resolve functions for `claim_fee_ft`. If transfer fails in `claim_fee_ft`, this
+    /// function reverts the state changed by that function
+    ///
+    /// # Arguments
+    /// * `contract_id` - contract id of the fungible token whose fees were withdrawn
+    /// * `amount` - amount of fee that was claimed
+    ///
+    /// # Return
+    /// This function returns if the transefer was successful on the `claim_fee_ft` function
     #[private]
     pub fn internal_resolve_claim_fee_ft(
         &mut self,
@@ -207,6 +255,15 @@ impl Contract {
         res
     }
 
+    /// Internal resolve functions for `claim_fee_native`. If transfer fails in `claim_fee_native`, this
+    /// function reverts the state changed by that function
+    ///
+    /// # Arguments
+    /// * `amount` - amount of fee that was claimed
+    ///
+    /// # Return
+    /// This function returns if the transefer was successful on the `claim_fee_ft` function
+    #[private]
     #[private]
     pub fn internal_resolve_claim_fee_native(
         &mut self,
@@ -223,7 +280,11 @@ impl Contract {
         res
     }
 
-    // claim accumulated fee by fee_receiver
+    /// claim the fees accumulated (only for the native(NEAR) token streams)
+    /// Can only be called by the fee_receiver
+    ///
+    /// # Return
+    /// Returns the promise for the transfer operation
     #[payable]
     pub fn claim_fee_native(&mut self) -> PromiseOrValue<bool>{
         assert_one_yocto();
@@ -237,7 +298,11 @@ impl Contract {
         ).into()
     }
 
-    // utility function to view the claimable fee, for testing purposes
+    /// view-claimable_fee shows the amount of fees that is accumulated in the contract
+    ///
+    /// # Return
+    /// This function returns the hashmap that maps AccountId of the each tokens to the amount
+    /// of fees that has been accumulated for each tokens
     pub fn view_claimable_fee(&self) -> HashMap<AccountId, U128> {
         let mut _hashmap = HashMap::new();
 
@@ -250,10 +315,24 @@ impl Contract {
         _hashmap
     }
 
+    /// calculate the fee amount for the given base amount based on the fee_rate
+    ///
+    /// # Argument
+    /// * `amount` - The amount of base tokens
+    ///
+    /// # Return
+    /// This function returns the amount of fee to deduct for the given amount of tokens
     pub fn calculate_fee_amount(&self, amount:u128) -> u128 {
         (amount * u128::from(self.fee_rate)) / u128::from(FEE_BPS_DIVISOR)
     }
 
+    /// Checks weather the given accountId is a valid(whitelisted) fungible token account
+    ///
+    /// # Argument
+    /// * `account` - The contract id of the fungible token to check
+    ///
+    /// # Return
+    /// this function returns weather given token is whitelisted
     pub fn valid_ft_sender(&self, account: AccountId) -> bool {
         self.whitelisted_tokens.contains(&account)
     }

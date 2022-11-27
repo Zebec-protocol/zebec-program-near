@@ -6,6 +6,14 @@ use near_contract_standards::storage_management::{
 };
 
 impl Contract {
+    /// Return the storage balance of the provided account id
+    ///
+    /// # Arguments
+    /// * `account_id` Account id of the user whose balance is to be returned
+    ///
+    /// # Return
+    /// This function returns the balance wrapped by Option. If the user is not registered returns
+    /// None
     pub(crate) fn internal_storage_balance_of(
         &self,
         account_id: &AccountId,
@@ -17,6 +25,13 @@ impl Contract {
         }
     }
 
+    /// Registers the given account Id
+    ///
+    /// # Arguments
+    /// * `account_id` Account id of the user whose balance is to be returned
+    /// * `amount` Amount of balance for the newly registered user. Samll amount of the balance
+    /// will be used for storing the registered user while rest will be available for the user.
+    ///
     pub(crate) fn internal_register_account(&mut self, account_id: &AccountId, amount: Balance) {
         let deposit_balance =
             amount - self.account_storage_usage as Balance * env::storage_byte_cost();
@@ -29,6 +44,8 @@ impl Contract {
         }
     }
 
+    /// Calculates the storage used by the account object
+    /// This will update the `account_storage_usage` on the contract
     pub(crate) fn measure_account_storage_usage(&mut self) {
         let initial_storage_usage = env::storage_usage();
         let tmp_account_id = AccountId::new_unchecked("a".repeat(64));
@@ -46,15 +63,22 @@ impl Contract {
 
 #[near_bindgen]
 impl StorageManagement for Contract {
-    // Deposit the balance for storage used by the user
-    // If the user account doesn't exists then a new account will be created for the user
-    // The minimum balance that needs to be deposited by the user is storage_balance_bounds.min
-    //
-    // If the user account already exists then the user may deposit as much balance as they wish
-    //
-    //
-    // **`registration_only` doesn't affect the implementation
-    // **Only the stream sender needs to be registered,
+    /// Deposit the balance for storage used by the user
+    /// If the user account doesn't exists then a new account will be created for the user
+    /// The minimum balance that needs to be deposited by the user is storage_balance_bounds.min
+    ///
+    /// If the user account already exists then the user may deposit as much balance as they wish
+    ///
+    ///
+    /// **`registration_only` doesn't affect the implementation**
+    /// **Only the stream sender needs to be registered for creating a stream**
+    /// 
+    /// # Arguments
+    /// * `account_id` - The account id of the user to deposit the balance
+    /// * `registration_only` - doesn't affect the implementation(ignored)
+    ///
+    /// # Return
+    /// This function return the StorageBalance of the user
     #[allow(unused_variables)]
     #[payable]
     fn storage_deposit(
@@ -88,6 +112,12 @@ impl StorageManagement for Contract {
     }
 
     /// storage_withdraw allows the caller to retrieve balance from `available` balance
+    /// # Arguments
+    /// * `amount` - The amount to withdraw wrapped with Option. Pass None to withdraw the entire
+    /// balance
+    ///
+    /// # Return
+    /// This function return the StorageBalance of the user
     #[payable]
     fn storage_withdraw(&mut self, amount: Option<U128>) -> StorageBalance {
         assert_one_yocto();
@@ -126,6 +156,15 @@ impl StorageManagement for Contract {
         }
     }
 
+    /// storage_unregister allows the caller to unregister themself
+    /// The balance will be transferred to the user.
+    ///
+    /// # Arguments
+    /// * `force` - Force unregister(should be false), force unregister is unsupported. The data of
+    /// user will not be lost on unregister
+    ///
+    /// # Return
+    /// This function return weather the operation was successful
     #[payable]
     fn storage_unregister(&mut self, force: Option<bool>) -> bool {
         assert_one_yocto();
@@ -151,6 +190,12 @@ impl StorageManagement for Contract {
         true
     }
 
+    /// storage_balance_bounds returns the bounds of balance
+    ///
+    /// # Return
+    /// This function returns the StorageBalanceBounds.
+    /// the min and max value will be equal to the amount of balance that needs to be used for storing the
+    /// account
     fn storage_balance_bounds(&self) -> StorageBalanceBounds {
         let required_storage_balance =
             (self.account_storage_usage) as Balance * env::storage_byte_cost();
@@ -160,6 +205,13 @@ impl StorageManagement for Contract {
         }
     }
 
+    /// storage_balance_of returns the balance of the provided user
+    ///
+    /// # Arguments
+    /// * `accountId` The account id of the user whose balance is to be returned
+    ///
+    /// # Return
+    /// This function returns the StroageBalance wrapped in Option
     fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
         self.internal_storage_balance_of(&account_id)
     }

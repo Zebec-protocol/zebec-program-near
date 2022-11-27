@@ -7,6 +7,24 @@ pub use crate::views::*;
 
 #[near_bindgen]
 impl Contract {
+    /// Creates a new stream for the fungible tokens from the given attributes
+    /// this is a private function that will only be called when some fungible tokens are
+    /// transferred to the token.
+    ///
+    /// # Arguments
+    /// * `stream_rate` - This is the rate of tokens streamed per second
+    /// * `start_time` - This is the starting timestamp for the stream
+    /// * `end_time` - This is the end timestamp for the stream
+    /// * `sender` - This is the accountId of the sender
+    /// * `amount` - The amount of tokens that was sent to the contract for creating the stream.
+    /// This must be equal to the total tokens that will be streamed by the stream
+    /// * `receiver` - This is the accountId of the receiver
+    /// * `contract_id` - This is the contract id of the fungible token being streamed
+    /// * `can_cancel` - This is the flag for weather the stream can be cancelled
+    /// * `can_update` - This is the flag for weather the stream can be updated
+    ///
+    /// # Return
+    /// This function returns weather the stream was created successfully
     fn ft_create_stream(
         &mut self,
         stream_rate: U128,
@@ -79,6 +97,18 @@ impl Contract {
 
 #[near_bindgen]
 impl FungibleTokenReceiver for Contract {
+    /// Fungible token receiver for the contract
+    /// This function will be called when the fungible tokens are transferred by the user.
+    ///
+    /// # Arguments
+    /// * `sender_id` - This is the accountId of the sender
+    /// * `amount` - The amount of tokens that was sent to the contract for creating the stream.
+    /// This must be equal to the total tokens that will be streamed by the stream
+    /// * `msg` - The string message attached with the transfer. The action performed will be based
+    /// on the message provided.
+    ///
+    /// # Return
+    /// This function returns a promise that resolves the amount of tokens that were used
     fn ft_on_transfer(
         &mut self,
         sender_id: AccountId, // EOA

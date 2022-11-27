@@ -65,6 +65,17 @@ trait FungibleTokenCore {
 
 #[near_bindgen]
 impl Contract {
+    /// Initializer for the contract
+    ///
+    /// # Arguments
+    /// * `owner_id` - This is the accountId of the owner of the contract
+    /// * `manager_id` - This is the accountId of the manager of the contract
+    /// * `fee_receiver` - This is the accountId of the fee receiver of the contract
+    /// * `fee_rate` - This is the default fee rate for the streams
+    /// * `max_fee_rate` - This is the max fee rate that can be changed(cannot be changed)
+    ///
+    /// # Return
+    /// This function returns the initialized Contract
     #[init]
     pub fn new(owner_id: AccountId, manager_id: AccountId, fee_receiver: AccountId, fee_rate: U64, max_fee_rate: U64) -> Self {
         require!(!env::state_exists(), "Already initialized");
@@ -87,6 +98,18 @@ impl Contract {
         this
     }
 
+    /// Creates a new stream for the native(NEAR) tokens from the given attributes
+    ///
+    /// # Arguments
+    /// * `receiver` - This is the accountId of the receiver
+    /// * `stream_rate` - This is the rate of tokens streamed per second
+    /// * `start` - This is the starting timestamp for the stream
+    /// * `end` - This is the end timestamp for the stream
+    /// * `can_cancel` - This is the flag for weather the stream can be cancelled
+    /// * `can_update` - This is the flag for weather the stream can be updated
+    ///
+    /// # Return
+    /// This function returns the id of the new Stream
     #[payable]
     pub fn create_stream(
         &mut self,
@@ -153,6 +176,13 @@ impl Contract {
         U64::from(params_key)
     }
 
+    /// Updates the given stream based on the provided attributes
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream to be updated
+    /// * `start` - This is the starting timestamp for the stream
+    /// * `end` - This is the end timestamp for the stream
+    /// * `rate` - This is the rate of tokens streamed per second
     #[payable]
     pub fn update(
         &mut self,
@@ -229,6 +259,18 @@ impl Contract {
         self.streams.insert(&id, &stream);
     }
 
+    /// Private function used to resolve the callback when balance is withdrawn from the stream
+    /// In case the transfer fails on withdraw, this function reverts the state changed by the
+    /// withdraw function
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream on which withdraw function was called
+    /// * `withdraw_amount` - This is the amount that was withdrawn from the stream
+    /// * `withdraw_time` - This is the timestamp when the withdraw was called
+    /// * `fee_amount` - This is the amount of fee that was deducted from the withdraw amount
+    ///
+    /// # Return
+    /// This function returns true if the withdraw operation was operated successfully
     #[private]
     pub fn internal_resolve_withdraw_stream(
         &mut self,
@@ -268,6 +310,18 @@ impl Contract {
         res
     }
 
+    /// Function to withdraw balance from the stream.
+    /// Withdraw can be called by both the sender and receiver.
+    /// The receiver can only withdraw the amount that has been streamed to them at the
+    /// given point of time.
+    /// The sender can withdraw the excess amoun remaining in the stream only after the stream
+    /// ends.
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream
+    ///
+    /// # Return
+    /// This function returns the promise of the transfer operation for the token
     #[payable]
     pub fn withdraw(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
         // Check 1 yocto token
@@ -469,6 +523,13 @@ impl Contract {
         }
     }
 
+    /// Function to pause the stream
+    /// Pause can only be called by the sender.
+    /// The stream can only be paused after it has started and before it has ended.
+    /// The stream should be in unpaused state before it can be paused.
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream
     pub fn pause(&mut self, stream_id: U64) {
         // convert id to native u64
         let id: u64 = stream_id.0;
@@ -509,6 +570,13 @@ impl Contract {
         log!("Stream paused: {}", stream.id);
     }
 
+    /// Function to resume the paused stream
+    /// Pause can only be called the sender.
+    /// The stream can only be resumed after it has started and before it has ended.
+    /// The stream should be in paused state before it can be resumed.
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream
     pub fn resume(&mut self, stream_id: U64) {
         // convert id to native u64
         let id: u64 = stream_id.0;
@@ -550,6 +618,17 @@ impl Contract {
         log!("Stream resumed: {}", stream.id);
     }
 
+    /// Function to cancel the stream
+    /// Cancel can only be called by both the sender.
+    /// Any amount that has already been streamed to the receiver and is yet to be withdrawn is
+    /// transferred to the receiver.
+    /// The excess amount remains on the stream and can be claimed by the sender.
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream
+    ///
+    /// # Return
+    /// This function returns the promise of the transfer operation for the token
     #[payable]
     pub fn cancel(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
         //  only transfers the tokens to receiver
@@ -656,6 +735,17 @@ impl Contract {
         }
     }
 
+    /// Private function used to resolve the callback when stream is cancelled
+    /// In case the transfer fails on cancel, this function reverts the state changed by the
+    /// cancel function
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream on which withdraw function was called
+    /// * `withdraw_amount` - This is the amount that was withdrawn from the stream
+    /// * `fee_amount` - This is the amount of fee that was deducted from the withdraw amount
+    ///
+    /// # Return
+    /// This function returns weather the withdraw operation was operated successfully
     #[private]
     pub fn internal_resolve_cancel_stream(
         &mut self,
@@ -684,6 +774,17 @@ impl Contract {
         res
     }
 
+    /// Private function used to resolve the callback when excess amount is claimed by the sender
+    /// of the stream after it is cancelled.
+    /// In case the transfer fails on claim, this function reverts the state changed by the
+    /// claim function
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream on which withdraw function was called
+    /// * `withdraw_amount` - This is the amount that was withdrawn from the stream
+    ///
+    /// # Return
+    /// This function returns weather the claim operation was operated successfully
     #[private]
     pub fn internal_resolve_claim_stream(
         &mut self,
@@ -704,7 +805,15 @@ impl Contract {
         res
     }
 
-    // allows the sender to withdraw funds if the stream is_cancelled.
+    /// Function to claim the excess balance from the stream after it is cancelled
+    /// claim can only be called by both the sender.
+    /// All the balance that is in the stream will be transferred to the sender of the stream
+    ///
+    /// # Arguments
+    /// * `stream_id` - This is the id of the stream
+    ///
+    /// # Return
+    /// This function returns the promise of the transfer operation for the token
     #[payable]
     pub fn claim(&mut self, stream_id: U64) -> PromiseOrValue<bool> {
         // Check 1 yocto token
