@@ -488,6 +488,11 @@ impl Contract {
             "Stream can only be paused by the sender"
         );
 
+        require!(!stream.is_cancelled, "Cannot pause cancelled stream");
+
+        // assert that the stream is not already paused
+        require!(!stream.is_paused, "Cannot pause already paused stream");
+
         // Can only be paused after the stream has started and before it has ended
         let can_pause =
             current_timestamp > stream.start_time && current_timestamp < stream.end_time;
@@ -495,10 +500,6 @@ impl Contract {
             can_pause,
             "Stream can only be pause after it starts and before it has ended"
         );
-        require!(!stream.is_cancelled, "Cannot pause cancelled stream");
-
-        // assert that the stream is already paused
-        require!(!stream.is_paused, "Cannot pause already paused stream");
 
         // update the stream state
         stream.is_paused = true;
