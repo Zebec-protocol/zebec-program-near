@@ -1,7 +1,7 @@
 use crate::*;
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 
-use near_sdk::{serde_json, AccountId, PromiseOrValue};
+use near_sdk::{serde_json, AccountId, PromiseOrValue, log};
 
 pub use crate::views::*;
 
@@ -70,7 +70,32 @@ impl Contract {
         // Update the global stream count for next stream
         self.current_id += 1;
 
-        log!("Saving streams {}", stream.id);
+        log!(
+            r#"EVENT_JSON:{{"event": "Token stream created", "data":{{
+            "stream id": "{}",
+            "sender": "{}",
+            "receiver": "{}",
+            "created time": "{}",
+            "stream rate": "{}",
+            "start time": "{}",
+            "end time": "{}",
+            "can cancel": "{}",
+            "can update": "{}",
+            "stream amount": "{}",
+            "token id": "{}"
+            }}"#,
+            stream.id,
+            env::predecessor_account_id(),
+            stream.sender,
+            stream.rate,
+            stream.created,
+            stream.start_time,
+            stream.end_time,
+            stream.can_cancel,
+            stream.can_update,
+            stream.balance,
+            stream.contract_id
+    );
 
         true
     }
