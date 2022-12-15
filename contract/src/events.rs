@@ -252,3 +252,28 @@ impl fmt::Display for StreamUpdateLog {
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ns_creation() {
+        let expected = r#"{"EVENT_JSON":{"event": "Native stream created", "data":{"stream_id":1,"sender":"sender.near","receiver":"receiver.near","created":100,"rate":100,"start_time":100,"end_time":100,"can_cancel":true,"can_update":true,"balance":100,"is_native":true}}}"#;
+
+        let log = NStreamCreationLog {
+            stream_id: 1,
+            sender: "sender.near".parse().unwrap(),
+            receiver: "receiver.near".parse().unwrap(),
+            rate: 100,
+            created: 100,
+            start_time: 100,
+            end_time: 100,
+            can_cancel: true,
+            can_update: true,
+            balance: 100,
+            is_native: true,
+        };
+        assert_eq!(expected, log.to_string());
+    }
+}
