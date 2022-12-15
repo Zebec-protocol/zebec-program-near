@@ -1,3 +1,4 @@
+use events::NStreamCreationLog;
 use near_contract_standards::storage_management::StorageBalance;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedMap, UnorderedSet};
@@ -11,6 +12,7 @@ use near_sdk::{
 
 mod calls;
 mod constants;
+mod events;
 mod storage_spec;
 mod utils;
 mod views;
@@ -19,6 +21,7 @@ use constants::MAX_RATE;
 use constants::NATIVE_NEAR_CONTRACT_ID;
 
 use crate::constants::{GAS_FOR_FT_TRANSFER, GAS_FOR_FT_TRANSFER_CALL, GAS_FOR_RESOLVE_TRANSFER};
+use crate::events::{StreamUpdateLog, WithdrawNativeSenderLog, WithdrawTokenSenderLog, WithdrawNativeReceiverLog, WithdrawTokenReceiverLog, StreamPauseLog, CancelNativeLog, CancelTokenLog, ClaimNativeLog, ClaimTokenLog, StreamResumeLog};
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -157,32 +160,20 @@ impl Contract {
         self.accounts
             .insert(&env::predecessor_account_id(), &storage_balance);
 
-        log!(
-            r#"EVENT_JSON:{{"event": "Native stream created", "data":{{
-                "stream id": "{}",
-                "sender": "{}",
-                "receiver": "{}",
-                "created time": "{}",
-                "stream rate": "{}",
-                "start time": "{}",
-                "end time": "{}",
-               "can cancel": "{}",
-               "can update": "{}",
-                "stream amount": "{}",
-                "Is Native" : "{}"
-            }}"#,
-            stream.id,
-            env::predecessor_account_id(),
-            stream.receiver,
-            stream.rate,
-            stream.created,
-            stream.start_time,
-            stream.end_time,
-            stream.can_cancel,
-            stream.can_update,
-            stream.balance,
-            stream.is_native
-        );
+        let nslog: NStreamCreationLog = NStreamCreationLog {
+            stream_id: stream.id,
+            sender: env::predecessor_account_id(),
+            receiver: stream.receiver,
+            rate: stream.rate,
+            created: stream.created,
+            start_time: stream.start_time,
+            end_time: stream.end_time,
+            can_cancel: stream.can_cancel,
+            can_update: stream.can_update,
+            balance: stream.balance,
+            is_native: stream.is_native,
+        };
+        env::log_str(&nslog.to_string());
 
         U64::from(params_key)
     }
@@ -259,6 +250,15 @@ impl Contract {
         } else {
             assert_one_yocto();
         }
+        // logging functionalities
+        let update_log: StreamUpdateLog = StreamUpdateLog{
+            stream_id: stream.id,
+            start: Some(stream.start_time),
+            end: Some(stream.end_time),
+            rate: Some(stream.rate),
+            balance: Some(stream.balance)
+        };
+        env::log_str(&update_log.to_string());
 
         self.streams.insert(&id, &stream);
     }
@@ -382,18 +382,15 @@ impl Contract {
 
             if temp_stream.is_native {
                 self.streams.insert(&stream_id.into(), &temp_stream);
-                log!(
-                    r#"EVENT_JSON: {{"event": "sender withdraws native ", "data": {{
-                    "stream id": "{}",
-                    "withdraw amount": "{}",
-                    "withdraw time": "{}",
-                    "sender": "{}"
-                    }}"#,
-                    temp_stream.id,
-                    remaining_balance,
-                    current_timestamp,
-                    sender,
-                );
+                
+                let withdraw_log: WithdrawNativeSenderLog = WithdrawNativeSenderLog{
+                    stream_id: temp_stream.id,
+                    withdraw_amount: remaining_balance,
+                    withdraw_time: current_timestamp,
+                    sender: sender.clone(),
+                };
+                env::log_str(&withdraw_log.to_string());
+
                 // result is not in the current block, confirmation is in next block
                 Promise::new(sender)
                     .transfer(remaining_balance)
@@ -408,21 +405,14 @@ impl Contract {
                     .into()
             } else {
                 self.streams.insert(&stream_id.into(), &temp_stream);
-                log!(
-                    
-                    r#"EVENT_JSON: {{"event": "sender withdraws token", "data": {{
-                    "token id" : "{}",
-                    "stream id": "{}",
-                    "withdraw amount": "{}",
-                    "withdraw time": "{}",
-                    "sender": "{}",
-                    }}"#,
-                    temp_stream.contract_id,
-                    temp_stream.id,
-                    remaining_balance,
-                    current_timestamp,
-                    sender,
-                );
+
+                let withdraw_log: WithdrawTokenSenderLog = WithdrawTokenSenderLog{
+                    stream_id: temp_stream.id,
+                    withdraw_amount: remaining_balance,
+                    withdraw_time: current_timestamp,
+                    sender: sender.clone(),
+                };
+                env::log_str(&withdraw_log.to_string());
 
                 // NEP141 : ft_transfer()
                 // 50TGas - 20(for FT transfer) - 20 (for resolve), only 5 for internal operations
@@ -512,19 +502,13 @@ impl Contract {
             }
 
             if temp_stream.is_native {
-
-                log!(
-                    r#"EVENT_JSON:{{"event": "receiver withdraws native stream", "data":{{
-                    "stream id": "{}",
-                    "withdraw amount": "{}",
-                    "withdraw time": "{}",
-                    "receiver": "{}",
-                    }}"#,
-                    temp_stream.id,
-                    withdrawal_amount,
-                    current_timestamp,
-                    temp_stream.receiver,
-                );
+                let withdraw_log: WithdrawNativeReceiverLog = WithdrawNativeReceiverLog{
+                    stream_id: temp_stream.id,
+                    withdraw_amount: withdrawal_amount,
+                    withdraw_time: current_timestamp,
+                    sender: temp_stream.receiver,
+                };
+                env::log_str(&withdraw_log.to_string());
 
                 Promise::new(receiver)
                     .transfer(withdrawal_amount)
@@ -538,21 +522,16 @@ impl Contract {
                     )
                     .into()
             } else {
+                let withdraw_log: WithdrawTokenReceiverLog = WithdrawTokenReceiverLog{
+                    stream_id: temp_stream.id,
+                    contract_id: temp_stream.contract_id.clone(),
+                    withdraw_amount: withdrawal_amount,
+                    withdraw_time: current_timestamp,
+                    sender: temp_stream.receiver,
+                };
+                env::log_str(&withdraw_log.to_string());
+
                 // NEP141 : ft_transfer()
-                log!(
-                    r#"EVENT_JSON:{{"event": "receiver withdraws token", "data":{{
-                    "token id": "{}",
-                    "stream id": "{}",
-                    "withdraw amount": "{}",
-                    "withdraw time": "{}",
-                    "receive"r: "{}",
-                    }}"#,
-                    temp_stream.contract_id,
-                    temp_stream.id,
-                    withdrawal_amount,
-                    current_timestamp,
-                    temp_stream.receiver,
-                );
                 require!(
                     (env::prepaid_gas() - env::used_gas()) > GAS_FOR_FT_TRANSFER_CALL,
                     "More gas is required"
@@ -613,14 +592,12 @@ impl Contract {
         stream.paused_time = current_timestamp;
         self.streams.insert(&id, &stream);
 
-        log!(
-            r#"EVENT_JSON:{{"event": "stream paused", "data":{{
-            "Stream paused id": "{}",
-            "Paused Time": "{}",
-            }}"#,
-            stream.id,
-            current_timestamp,
-        );
+
+        let pause_log: StreamPauseLog = StreamPauseLog{
+            stream_id: stream.id,
+            time: current_timestamp,
+        };
+        env::log_str(&pause_log.to_string());
     }
 
     pub fn resume(&mut self, stream_id: U64) {
@@ -661,14 +638,11 @@ impl Contract {
         self.streams.insert(&id, &stream);
 
         // Log
-        log!(
-            r#"EVENT_JSON:{{"event": "stream resumed", "data":{{
-            "stream resumed id": "{}",
-            "resumed time": "{}",
-            }}"#,
-            stream.id,
-            current_timestamp,
-        );
+        let resume_log: StreamResumeLog = StreamResumeLog{
+            stream_id: stream.id,
+            time: current_timestamp,
+        };
+        env::log_str(&resume_log.to_string());
     }
 
     #[payable]
@@ -759,14 +733,13 @@ impl Contract {
         log!("Stream cancelled: {}", temp_stream.id);
 
         if temp_stream.is_native {
-            log!(
-                r#"EVENT_JSON:{{"event": "Native stream cancelled", "data":{{
-                "stream id": "{}",
-                Resumed Time: "{}",
-                }}"#,
-                temp_stream.id,
-                current_timestamp,
-            );
+
+            let cancel_log: CancelNativeLog = CancelNativeLog{
+                stream_id: temp_stream.id,
+                time: current_timestamp,
+            };
+            env::log_str(&cancel_log.to_string());
+            
             if receiver_amt > 0 {
                 Promise::new(receiver)
                     .transfer(receiver_amt)
@@ -788,17 +761,14 @@ impl Contract {
                 (env::prepaid_gas() - env::used_gas()) > GAS_FOR_FT_TRANSFER_CALL,
                 "More gas is required"
             );
-            log!(
-                r#"EVENT_JSON:{{"event": "token stream cancelled", "data":{{
-                "stream id": "{}",
-                "resume time": "{}",
-                "contract id": "{}"
-                }}"#,
-                temp_stream.id,
-                current_timestamp,
-                temp_stream.contract_id
-            );
 
+            let cancel_log: CancelTokenLog = CancelTokenLog{
+                stream_id: temp_stream.id,
+                time: current_timestamp,
+                contract_id: temp_stream.contract_id.clone(),
+            };
+            env::log_str(&cancel_log.to_string());
+            
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
                 .with_static_gas(GAS_FOR_FT_TRANSFER)
                 .with_attached_deposit(1)
@@ -903,16 +873,13 @@ impl Contract {
         let revert_balance = U128::from(balance);
 
         if temp_stream.is_native {
-            log!(
-                r#"EVENT_JSON:{{"event": "Sender calims native funds", "data":{{
-                "stream id": "{}"
-                "claimed time": "{}"
-                "claim balance": {}
-                }}"#,
-                temp_stream.id,
-                env::block_timestamp(),
-                balance,
-            );
+            let claim_log: ClaimNativeLog = ClaimNativeLog{
+                stream_id: temp_stream.id,
+                time: env::block_timestamp(),
+                balance: balance,
+            };
+            env::log_str(&claim_log.to_string());
+            
             Promise::new(sender)
                 .transfer(balance.into())
                 .then(
@@ -926,18 +893,15 @@ impl Contract {
                 env::prepaid_gas() - env::used_gas() > GAS_FOR_FT_TRANSFER_CALL,
                 "More gas is required"
             );
-            log!(
-                r#"EVENT_JSON:{{"event": "Sender calims token stream", "data":{{
-                "stream id": "{}",
-                "contract id": "{}",
-                "claimed time": "{}",
-                "claim balance": "{}"
-                }}"#,
-                temp_stream.id,
-                temp_stream.contract_id,
-                env::block_timestamp(),
-                balance,
-            );
+
+            let claim_log: ClaimTokenLog = ClaimTokenLog{
+                stream_id: temp_stream.id,
+                contract_id: temp_stream.contract_id.clone(),
+                time: env::block_timestamp(),
+                balance: balance,
+            };
+            
+            env::log_str(&claim_log.to_string());
             ext_ft_transfer::ext(temp_stream.contract_id.clone())
                 .with_static_gas(GAS_FOR_FT_TRANSFER)
                 .with_attached_deposit(1)

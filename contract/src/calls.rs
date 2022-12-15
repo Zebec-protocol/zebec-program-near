@@ -1,7 +1,7 @@
-use crate::*;
+use crate::{*, events::FStreamCreationLog};
 use near_contract_standards::fungible_token::receiver::FungibleTokenReceiver;
 
-use near_sdk::{serde_json, AccountId, PromiseOrValue, log};
+use near_sdk::{serde_json, AccountId, PromiseOrValue};
 
 pub use crate::views::*;
 
@@ -70,33 +70,9 @@ impl Contract {
         // Update the global stream count for next stream
         self.current_id += 1;
 
-        log!(
-            r#"EVENT_JSON:{{"event": "Token stream created", "data":{{
-            "stream id": "{}",
-            "sender": "{}",
-            "receiver": "{}",
-            "created time": "{}",
-            "stream rate": "{}",
-            "start time": "{}",
-            "end time": "{}",
-            "can cancel": "{}",
-            "can update": "{}",
-            "stream amount": "{}",
-            "token id": "{}"
-            }}"#,
-            stream.id,
-            env::predecessor_account_id(),
-            stream.sender,
-            stream.rate,
-            stream.created,
-            stream.start_time,
-            stream.end_time,
-            stream.can_cancel,
-            stream.can_update,
-            stream.balance,
-            stream.contract_id
-    );
-
+        let fslog: FStreamCreationLog = FStreamCreationLog { stream_id: stream.id, sender: env::predecessor_account_id(), receiver: stream.receiver, rate: stream.rate, created: stream.created, start_time: stream.start_time, end_time: stream.end_time, can_cancel: stream.can_cancel, can_update: stream.can_update, balance: stream.balance, contract_id: stream.contract_id };
+        
+        env::log_str(&fslog.to_string());
         true
     }
 
