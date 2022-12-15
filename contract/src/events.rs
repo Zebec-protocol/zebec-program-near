@@ -68,7 +68,7 @@ pub struct WithdrawNativeSenderLog {
 impl fmt::Display for WithdrawNativeSenderLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Sender withdraws Native stream", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Sender withdraws Native stream", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -86,7 +86,7 @@ pub struct WithdrawTokenSenderLog {
 impl fmt::Display for WithdrawTokenSenderLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Sender withdraws Token stream", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Sender withdraws Token stream", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -104,7 +104,7 @@ pub struct WithdrawNativeReceiverLog {
 impl fmt::Display for WithdrawNativeReceiverLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Receiver withdraws Native stream", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Receiver withdraws Native stream", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -123,7 +123,7 @@ pub struct WithdrawTokenReceiverLog {
 impl fmt::Display for WithdrawTokenReceiverLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Receiver withdraws Token stream", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Receiver withdraws Token stream", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -139,7 +139,7 @@ pub struct StreamPauseLog {
 impl fmt::Display for StreamPauseLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Stream paused", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Stream paused", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -154,7 +154,7 @@ pub struct StreamResumeLog {
 impl fmt::Display for StreamResumeLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Stream Resume", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Stream Resume", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -170,7 +170,7 @@ pub struct CancelNativeLog {
 impl fmt::Display for CancelNativeLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Native stream cancelled", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Native stream cancelled", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -187,7 +187,7 @@ pub struct CancelTokenLog {
 impl fmt::Display for CancelTokenLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Token stream cancelled", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Token stream cancelled", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -204,7 +204,7 @@ pub struct ClaimNativeLog {
 impl fmt::Display for ClaimNativeLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Sender claims from native stream", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Sender claims from native stream", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -222,7 +222,7 @@ pub struct ClaimTokenLog {
 impl fmt::Display for ClaimTokenLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Sender claims from token stream", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Sender claims from token stream", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
@@ -246,32 +246,9 @@ pub struct StreamUpdateLog {
 impl fmt::Display for StreamUpdateLog {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
-            r#"EVENT_JSON:{{"event": "Stream updated", "data":{}}}"#,
+            r#"{{"EVENT_JSON":{{"event": "Stream updated", "data":{}}}}}"#,
             &serde_json::to_string(self).map_err(|_| fmt::Error)?
         ))
     }
 }
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    #[test]
-    fn test_ns_creation() {
-        let expected = r#"EVENT_JSON:{"event": "Native stream created", "data":{"stream_id":1,"sender":"sender.near","receiver":"receiver.near","created":100,"rate":100,"start_time":100,"end_time":100,"can_cancel":true,"can_update":true,"balance":100,"is_native":true}}"#;
-
-        let log = NStreamCreationLog {
-            stream_id: 1,
-            sender: "sender.near".parse().unwrap(),
-            receiver: "receiver.near".parse().unwrap(),
-            rate: 100,
-            created: 100,
-            start_time: 100,
-            end_time: 100,
-            can_cancel: true,
-            can_update: true,
-            balance: 100,
-            is_native: true,
-        };
-        assert_eq!(expected, log.to_string());
-    }
-}
