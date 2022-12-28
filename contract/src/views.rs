@@ -45,7 +45,7 @@ impl Contract {
         self.streams
             .keys()
             .map(|id| self.streams.get(&id).unwrap())
-            .filter(|stream| stream.sender == user_id)
+            .filter(|stream| stream.sender == user_id || stream.receiver == user_id)
             .skip(start as usize)
             .take(limit.unwrap_or(U64(50)).0 as usize)
             .collect()
@@ -55,7 +55,7 @@ impl Contract {
         let count = self.streams
             .keys()
             .map(|id| self.streams.get(&id).unwrap())
-            .filter(|stream| stream.sender == user_id)
+            .filter(|stream| stream.sender == user_id || stream.receiver == user_id)
             .count();
         U64::from(count as u64)
     }
@@ -82,6 +82,33 @@ impl Contract {
             .keys()
             .map(|id| self.streams.get(&id).unwrap())
             .filter(|stream| stream.receiver == user_id)
+            .skip(start as usize)
+            .take(limit.unwrap_or(U64(50)).0 as usize)
+            .collect()
+    }
+
+    pub fn get_outgoing_streams_count(&self, user_id: AccountId) -> U64 {
+        let count = self.streams
+            .keys()
+            .map(|id| self.streams.get(&id).unwrap())
+            .filter(|stream| stream.sender == user_id)
+            .count();
+        U64::from(count as u64)
+    }
+
+
+    pub fn get_outgoing_streams_for_user(
+        &self,
+        user_id: AccountId,
+        from_index: Option<U128>,
+        limit: Option<U64>,
+    ) -> Vec<Stream> {
+        let start = u128::from(from_index.unwrap_or(U128(0)));
+
+        self.streams
+            .keys()
+            .map(|id| self.streams.get(&id).unwrap())
+            .filter(|stream| stream.sender == user_id)
             .skip(start as usize)
             .take(limit.unwrap_or(U64(50)).0 as usize)
             .collect()
