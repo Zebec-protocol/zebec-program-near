@@ -60,7 +60,10 @@ pub struct Stream {
     can_update: bool,
     can_cancel: bool,
     is_native: bool,
-    locked: bool, // A mutex to block any exectuion before callback completes
+    locked: bool, // A mutex to block any execution before callback completes
+    paused_amount: Balance,
+    total_amount: Balance,
+    withdrawn_amount: Balance, // only for receiver
 }
 
 #[ext_contract(ext_ft_transfer)]
@@ -145,7 +148,10 @@ impl Contract {
         let final_storage_usage = env::storage_usage();
         let required_storage_balance =
             (final_storage_usage - initial_storage_usage) as Balance * env::storage_byte_cost();
-
+        
+        log!("required_storage_balance: {}", required_storage_balance);
+        log!("storage_usage: {}", final_storage_usage - initial_storage_usage );
+        
         require!(
             storage_balance.available >= required_storage_balance.into(),
             "Deposit more storage balance!"
@@ -192,6 +198,9 @@ impl Contract {
 
         // get the stream
         let mut stream = self.streams.get(&id).unwrap();
+        
+        require!(stream.is_native, "not native stream!");
+
         require!(
             !stream.locked,
             "Some other operation is happening in the stream"
@@ -353,8 +362,12 @@ impl Contract {
             let withdrawal_amount: u128;
 
             if temp_stream.is_paused {
-                withdrawal_amount = temp_stream.rate
+                if temp_stream.end_time > temp_stream.withdraw_time {
+                    withdrawal_amount = temp_stream.rate
                     * u128::from(temp_stream.paused_time - temp_stream.withdraw_time);
+                } else {
+                    withdrawal_amount = 0;
+                }
             } else {
                 if temp_stream.end_time > temp_stream.withdraw_time {
                     // receiver has not withdrawn after stream ended
@@ -477,6 +490,7 @@ impl Contract {
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
             temp_stream.withdraw_time = withdraw_time;
+            temp_stream.withdrawn_amount += withdrawal_amount;
             temp_stream.locked = true;
 
             // Update the stream
@@ -629,8 +643,10 @@ impl Contract {
         // able to withdraw fund for paused time
         if current_timestamp > stream.end_time {
             stream.withdraw_time += stream.end_time - stream.paused_time;
+            stream.paused_amount += u128::from(stream.end_time - stream.paused_time ) * stream.rate;
         } else {
             stream.withdraw_time += current_timestamp - stream.paused_time;
+            stream.paused_amount += u128::from(current_timestamp - stream.paused_time ) * stream.rate;
         }
 
         // Reset the paused_time and save
@@ -701,7 +717,9 @@ impl Contract {
 
         // Update the stream balance and save
         temp_stream.balance -= receiver_amt;
+        temp_stream.withdrawn_amount += receiver_amt;
         temp_stream.is_cancelled = true;
+        temp_stream.withdraw_time = current_timestamp;
 
         // Lock only if transfer will occur
         if receiver_amt > 0 {
@@ -2071,6 +2089,52 @@ mod tests {
         assert_eq!(stream.paused_time, 0);
         assert_eq!(stream.can_update, true);
         assert_eq!(stream.can_cancel, false);
+    }
+
+
+    #[test]
+    fn test_updates_withdrawn_balance() {
+        // 1. Create the contract
+        let start = env::block_timestamp();
+        let start_time: U64 = U64::from(start + 10);
+        let end_time: U64 = U64::from(start + 20);
+        let sender = &accounts(0); // alice
+        let receiver = &accounts(1); // bob
+        let rate = U128::from(1 * NEAR);
+        let mut contract = Contract::new(
+            accounts(2),
+            accounts(3),
+            accounts(4),
+            U64::from(25),
+            U64::from(200),
+        ); // "charlie", "danny", "eugene"
+        register_user(&mut contract, sender.clone());
+
+        set_context_with_balance(sender.clone(), 10 * NEAR);
+
+        // 2. create stream and cancel
+        contract.create_stream(receiver.clone(), rate, start_time, end_time, false, true);
+        let stream_id = U64::from(1);
+
+        set_context_with_balance_timestamp(receiver.clone(), 1, start + 15);
+
+
+        contract.withdraw(stream_id);
+
+        let params_key = 1;
+        let stream = contract.streams.get(&params_key).unwrap();
+        
+        assert!(!stream.is_paused);
+        assert_eq!(stream.id, 1);
+        assert_eq!(stream.sender, sender.clone());
+        assert_eq!(stream.receiver, accounts(1));
+        assert_eq!(stream.balance, 5 * NEAR);
+
+        assert_eq!(stream.withdrawn_amount, 5 * NEAR);
+        assert_eq!(stream.rate, 10 * NEAR);
+        assert_eq!(stream.end_time, start + 14);
+        assert_eq!(stream.withdraw_time, start + 15);
+        assert_eq!(stream.paused_time, 0);
     }
 
     // fn set_context(predecessor: AccountId) {
