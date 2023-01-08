@@ -80,6 +80,9 @@ impl Contract {
             can_update,
             is_native,
             locked: false,
+            paused_amount: 0,
+            total_amount: stream_amount,
+            withdrawn_amount: 0,
         }
     }
 
