@@ -261,7 +261,7 @@ impl Contract {
         }
 
         // Native fees accumulated
-        _hashmap.insert("native.testnet".parse().unwrap(), U128(self.native_fees));
+        _hashmap.insert(NATIVE_NEAR_CONTRACT_ID.parse().unwrap(), U128(self.native_fees));
         _hashmap
     }
 

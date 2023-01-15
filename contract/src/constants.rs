@@ -1,11 +1,11 @@
 use near_sdk::{Balance, Gas};
 
 
-// Default Id used for native streams, this id will be ignored for native stream
-pub const NATIVE_NEAR_CONTRACT_ID: &str = "test.near";
+// Default Id used for native streams, this id will be ignored for non-native stream
+pub const NATIVE_NEAR_CONTRACT_ID: &str = "near.near";
 
 // Max rate of stream per second
-pub const MAX_RATE: Balance = 100_000_000_000_000_000_000_000_000; // 100 NEAR
+pub const MAX_RATE: Balance = 10_000_000_000_000_000_000_000_000; // 10 NEAR
 
 // Divisor for fee percentage (use 10000 for 1% fee)
 pub const FEE_BPS_DIVISOR: u64 = 10_000;

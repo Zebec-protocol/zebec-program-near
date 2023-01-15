@@ -34,3 +34,4 @@ contract/target/
 integration-tests/
 .parcel-cache/
 contract/.ipynb_checkpoints/
+contract/neardev*
