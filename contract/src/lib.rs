@@ -149,9 +149,6 @@ impl Contract {
         let required_storage_balance =
             (final_storage_usage - initial_storage_usage) as Balance * env::storage_byte_cost();
         
-        log!("required_storage_balance: {}", required_storage_balance);
-        log!("storage_usage: {}", final_storage_usage - initial_storage_usage );
-        
         require!(
             storage_balance.available >= required_storage_balance.into(),
             "Deposit more storage balance!"
