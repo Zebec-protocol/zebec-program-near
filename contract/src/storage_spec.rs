@@ -152,11 +152,15 @@ impl StorageManagement for Contract {
     }
 
     fn storage_balance_bounds(&self) -> StorageBalanceBounds {
-        let required_storage_balance =
+        // ~370 is required storage_usage for ft stream creation
+        let storage_cost_for_stream = 370 * env::storage_byte_cost();
+        let storage_cost_for_account =
             (self.account_storage_usage) as Balance * env::storage_byte_cost();
+        let total_cost = storage_cost_for_account + storage_cost_for_stream;
+        // max returns total stream creation of 20 stream
         StorageBalanceBounds {
-            min: required_storage_balance.into(),
-            max: Some(required_storage_balance.into()),
+            min: total_cost.into(),
+            max: Some((storage_cost_for_stream * 20 + storage_cost_for_account).into()),
         }
     }
 

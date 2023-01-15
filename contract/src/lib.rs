@@ -696,12 +696,16 @@ impl Contract {
         // Amounts to refund to the sender and the receiver
         let mut receiver_amt: u128;
 
+
+        temp_stream.withdraw_time = current_timestamp;
+
         // Calculate the amount to refund to the receiver
         if current_timestamp < temp_stream.start_time {
             receiver_amt = 0;
         } else if temp_stream.is_paused {
             receiver_amt =
                 u128::from(temp_stream.paused_time - temp_stream.withdraw_time) * temp_stream.rate;
+            temp_stream.withdraw_time = temp_stream.paused_time;
         } else {
             receiver_amt =
                 u128::from(current_timestamp - temp_stream.withdraw_time) * temp_stream.rate;
@@ -716,7 +720,6 @@ impl Contract {
         temp_stream.balance -= receiver_amt;
         temp_stream.withdrawn_amount += receiver_amt;
         temp_stream.is_cancelled = true;
-        temp_stream.withdraw_time = current_timestamp;
 
         // Lock only if transfer will occur
         if receiver_amt > 0 {
@@ -725,6 +728,10 @@ impl Contract {
 
         // Update the stream
         self.streams.insert(&id, &temp_stream);
+
+        if receiver_amt == 0 {
+            return PromiseOrValue::Value(true);
+        }
 
         // fee caclulation
         let fee_amount = self.calculate_fee_amount(receiver_amt);
@@ -754,9 +761,7 @@ impl Contract {
                 time: current_timestamp,
             };
             env::log_str(&cancel_log.to_string());
-            
-            if receiver_amt > 0 {
-                Promise::new(receiver)
+            Promise::new(receiver)
                     .transfer(receiver_amt)
                     .then(
                         Self::ext(env::current_account_id())
@@ -768,9 +773,6 @@ impl Contract {
                             ),
                     )
                     .into()
-            } else {
-                PromiseOrValue::Value(true)
-            }
         } else {
             require!(
                 (env::prepaid_gas() - env::used_gas()) > GAS_FOR_FT_TRANSFER_CALL,

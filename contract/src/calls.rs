@@ -41,7 +41,7 @@ impl Contract {
         // check the amount send to the stream
         require!(
             amount.0 == stream.balance,
-            "The amount provided doesn't matches the stream"
+            "The amount provided doesn't match the stream"
         );
 
         // Save the stream
