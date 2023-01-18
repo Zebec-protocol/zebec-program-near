@@ -276,6 +276,7 @@ impl Contract {
 
         // Values to revert back in case of failure
         withdrawal_amount: U128,
+        withdrawn_amount: U128,
         withdraw_time: U64,
         fee_amount: U128,
     ) -> bool {
@@ -290,6 +291,7 @@ impl Contract {
 
             // Revert the balance of the stream
             temp_stream.balance += withdrawal_amount.0;
+            temp_stream.withdrawn_amount -= withdrawn_amount.0;
 
             // Revert the withdraw time
             if withdraw_time.0 < temp_stream.withdraw_time {
@@ -408,6 +410,7 @@ impl Contract {
                         Self::ext(env::current_account_id()).internal_resolve_withdraw_stream(
                             stream_id,
                             withdrawal_amount_revert,
+                            U128(0),
                             withdrawal_time_revert,
                             U128::from(0),
                         ),
@@ -440,6 +443,7 @@ impl Contract {
                             .internal_resolve_withdraw_stream(
                                 stream_id,
                                 withdrawal_amount_revert,
+                                U128(0),
                                 withdrawal_time_revert,
                                 U128::from(0),
                             ),
@@ -451,6 +455,7 @@ impl Contract {
         } else {
             let time_elapsed: u64;
             let withdraw_time: u64;
+            let withdrawal_time_revert = temp_stream.withdraw_time;
 
             // Calculate the elapsed time
             if current_timestamp >= temp_stream.end_time {
@@ -482,7 +487,6 @@ impl Contract {
 
             // Values to revert incase the transfer fails
             let withdrawal_amount_revert = U128::from(withdrawal_amount);
-            let withdrawal_time_revert = U64::from(withdraw_time);
 
             // Update the stream struct and save
             temp_stream.balance -= withdrawal_amount;
@@ -527,7 +531,8 @@ impl Contract {
                         Self::ext(env::current_account_id()).internal_resolve_withdraw_stream(
                             stream_id,
                             withdrawal_amount_revert,
-                            withdrawal_time_revert,
+                            U128(temp_stream.withdrawn_amount),
+                            U64(withdrawal_time_revert),
                             U128::from(fee_amount),
                         ),
                     )
@@ -557,7 +562,8 @@ impl Contract {
                             .internal_resolve_withdraw_stream(
                                 stream_id,
                                 withdrawal_amount_revert,
-                                withdrawal_time_revert,
+                                U128(temp_stream.withdrawn_amount),
+                                U64(withdrawal_time_revert),
                                 U128::from(fee_amount),
                             ),
                     )
@@ -696,19 +702,17 @@ impl Contract {
         // Amounts to refund to the sender and the receiver
         let mut receiver_amt: u128;
 
-
-        temp_stream.withdraw_time = current_timestamp;
-
         // Calculate the amount to refund to the receiver
         if current_timestamp < temp_stream.start_time {
             receiver_amt = 0;
         } else if temp_stream.is_paused {
             receiver_amt =
                 u128::from(temp_stream.paused_time - temp_stream.withdraw_time) * temp_stream.rate;
-            temp_stream.withdraw_time = temp_stream.paused_time;
+            temp_stream.withdraw_time = temp_stream.paused_time; 
         } else {
             receiver_amt =
                 u128::from(current_timestamp - temp_stream.withdraw_time) * temp_stream.rate;
+            temp_stream.withdraw_time = current_timestamp;
         }
 
         // Values to revert in case the transfer fails
@@ -728,10 +732,6 @@ impl Contract {
 
         // Update the stream
         self.streams.insert(&id, &temp_stream);
-
-        if receiver_amt == 0 {
-            return PromiseOrValue::Value(true);
-        }
 
         // fee caclulation
         let fee_amount = self.calculate_fee_amount(receiver_amt);
@@ -753,6 +753,10 @@ impl Contract {
 
         // log
         log!("Stream cancelled: {}", temp_stream.id);
+        
+        if receiver_amt == 0 {
+            return PromiseOrValue::Value(true);
+        }
 
         if temp_stream.is_native {
 
