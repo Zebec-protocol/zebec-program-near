@@ -113,6 +113,26 @@ impl Contract {
             .take(limit.unwrap_or(U64(50)).0 as usize)
             .collect()
     }
+
+
+     pub fn get_outgoing_streams_for_user_per_tokens(
+        &self,
+        user_id: AccountId,
+        contract_id: AccountId,
+        from_index: Option<U128>,
+        limit: Option<U64>,
+    ) -> Vec<Stream> {
+        let current_timestamp = env::block_timestamp_ms() / 1000;
+        let start = u128::from(from_index.unwrap_or(U128(0)));
+
+        self.streams
+            .keys()
+            .map(|id| self.streams.get(&id).unwrap())
+            .filter(|stream| stream.sender == user_id && stream.contract_id == contract_id && stream.end_time > current_timestamp)
+            .skip(start as usize)
+            .take(limit.unwrap_or(U64(50)).0 as usize)
+            .collect()
+    }
 }
 
 #[cfg(test)]
